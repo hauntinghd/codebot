@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{PAGE_TITLE}}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '{{PRIMARY_COLOR}}',
+                        secondary: '{{SECONDARY_COLOR}}',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        html { scroll-behavior: smooth; }
+        .gradient-text {
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .gradient-bg {}
+    </style>
+</head>
+<body class="bg-white font-sans" x-data="{ mobileMenu: false, currentSection: 'hero' }">
+    <!-- Navigation -->
+    <nav class="fixed w-full top-0 z-50 bg-white/90 backdrop-blur-md border-b border-gray-100">
+        <div class="max-w-7xl mx-auto px-6 py-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                        <div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background: linear-gradient(135deg, {{PRIMARY_COLOR|default:'#6366f1'}}, {{SECONDARY_COLOR|default:'#a21caf'}});">
+                        <i class="{{LOGO_ICON}} text-white text-lg"></i>
+                    </div>
+                    <span class="text-xl font-bold text-gray-900">{{BRAND_NAME}}</span>
+                </div>
+                
+                <div class="hidden md:flex items-center gap-8">
+                    <a href="#features" class="text-gray-600 hover:text-gray-900 transition">Features</a>
+                    <a href="#how-it-works" class="text-gray-600 hover:text-gray-900 transition">How It Works</a>
+                    <a href="#pricing" class="text-gray-600 hover:text-gray-900 transition">Pricing</a>
+                    <a href="#testimonials" class="text-gray-600 hover:text-gray-900 transition">Testimonials</a>
+                </div>
+                
+                <div class="hidden md:flex items-center gap-4">
+                    <a href="#" class="text-gray-600 hover:text-gray-900 transition">Login</a>
+                    <a href="#cta" class="text-white px-6 py-2.5 rounded-full font-medium hover:opacity-90 transition" style="background: linear-gradient(135deg, {{PRIMARY_COLOR|default:'#6366f1'}}, {{SECONDARY_COLOR|default:'#a21caf'}});">
+                        Get Started
+                    </a>
+                </div>
+                
+                <button @click="mobileMenu = !mobileMenu" class="md:hidden">
+                    <i class="fas fa-bars text-2xl"></i>
+                </button>
+            </div>
+        </div>
+        
+        <!-- Mobile Menu -->
+        <div x-show="mobileMenu" x-transition class="md:hidden bg-white border-t py-4 px-6">
+            <a href="#features" class="block py-2 text-gray-600">Features</a>
+            <a href="#how-it-works" class="block py-2 text-gray-600">How It Works</a>
+            <a href="#pricing" class="block py-2 text-gray-600">Pricing</a>
+            <a href="#cta" class="block py-3 mt-2 text-white text-center rounded-full font-medium" style="background: linear-gradient(135deg, {{PRIMARY_COLOR|default:'#6366f1'}}, {{SECONDARY_COLOR|default:'#a21caf'}});">Get Started</a>
+        </div>
+    </nav>
+    
+    <!-- Hero Section -->
+    <section id="hero" class="pt-32 pb-20 px-6">
+        <div class="max-w-7xl mx-auto">
+            <div class="grid lg:grid-cols-2 gap-12 items-center">
+                <div>
+                    <div class="inline-flex items-center gap-2 bg-gray-100 text-gray-700 px-4 py-2 rounded-full text-sm mb-6">
+                        <i class="fas fa-sparkles text-primary"></i>
+                        {{HERO_BADGE}}
+                    </div>
+                    <h1 class="text-5xl lg:text-6xl font-bold text-gray-900 leading-tight mb-6">
+                        {{HERO_TITLE}}
+                    </h1>
+                    <p class="text-xl text-gray-600 mb-8 leading-relaxed">
+                        {{HERO_SUBTITLE}}
+                    </p>
+                    <div class="flex flex-wrap gap-4">
+                        <a href="#cta" class="text-white px-8 py-4 rounded-full font-semibold text-lg hover:opacity-90 transition shadow-lg shadow-primary/30" style="background: linear-gradient(135deg, {{PRIMARY_COLOR|default:'#6366f1'}}, {{SECONDARY_COLOR|default:'#a21caf'}});">
+                            {{CTA_BUTTON}}
+                        </a>
+                        <a href="#demo" class="flex items-center gap-2 px-8 py-4 rounded-full font-semibold text-lg border-2 border-gray-200 hover:border-gray-300 transition">
+                            <i class="fas fa-play-circle text-primary"></i>
+                            Watch Demo
+                        </a>
+                    </div>
+                    <div class="flex items-center gap-8 mt-10">
+                        <div class="flex -space-x-3">
+                            <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=50&h=50&fit=crop" class="w-10 h-10 rounded-full border-2 border-white">
+                            <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=50&h=50&fit=crop" class="w-10 h-10 rounded-full border-2 border-white">
+                            <img src="https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=50&h=50&fit=crop" class="w-10 h-10 rounded-full border-2 border-white">
+                            <img src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=50&h=50&fit=crop" class="w-10 h-10 rounded-full border-2 border-white">
+                        </div>
+                        <div class="text-sm text-gray-600">
+                            <span class="font-semibold text-gray-900">{{SOCIAL_PROOF_NUMBER}}</span> {{SOCIAL_PROOF_TEXT}}
+                        </div>
+                    </div>
+                </div>
+                <div class="relative">
+                    <img src="{{HERO_IMAGE}}" alt="Hero" class="w-full rounded-2xl shadow-2xl">
+                    <div class="absolute -bottom-6 -left-6 bg-white rounded-xl shadow-lg p-4 flex items-center gap-3">
+                        <div class="w-12 h-12 rounded-full flex items-center justify-center" style="background: linear-gradient(135deg, {{PRIMARY_COLOR|default:'#6366f1'}}, {{SECONDARY_COLOR|default:'#a21caf'}});">
+                            <i class="fas fa-check text-white"></i>
+                        </div>
+                        <div>
+                            <p class="font-semibold text-gray-900">{{FLOATING_CARD_TITLE}}</p>
+                            <p class="text-sm text-gray-500">{{FLOATING_CARD_TEXT}}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+    
+    <!-- Logos Section -->
+    <section class="py-12 border-y border-gray-100 bg-gray-50">
+        <div class="max-w-7xl mx-auto px-6">
+            <p class="text-center text-gray-500 mb-8">Trusted by innovative companies worldwide</p>
+            <div class="flex flex-wrap justify-center items-center gap-12 opacity-50">
+                <i class="fab fa-google text-4xl text-gray-400"></i>
+                <i class="fab fa-microsoft text-4xl text-gray-400"></i>
+                <i class="fab fa-apple text-4xl text-gray-400"></i>
+                <i class="fab fa-amazon text-4xl text-gray-400"></i>
+                <i class="fab fa-meta text-4xl text-gray-400"></i>
+            </div>
+        </div>
+    </section>
+    
+    <!-- Features Section -->
+    <section id="features" class="py-24 px-6">
+        <div class="max-w-7xl mx-auto">
+            <div class="text-center mb-16">
+                <p class="text-primary font-semibold mb-4">FEATURES</p>
+                <h2 class="text-4xl font-bold text-gray-900 mb-4">{{FEATURES_TITLE}}</h2>
+                <p class="text-xl text-gray-600 max-w-2xl mx-auto">{{FEATURES_SUBTITLE}}</p>
+            </div>
+            
+            <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-8" x-data="{ features: {{FEATURES_JSON}} }">
+                <template x-for="feature in features" :key="feature.id">
+                    <div class="bg-white rounded-2xl p-8 border border-gray-100 hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5 transition duration-300">
+                        <div class="w-14 h-14 rounded-xl flex items-center justify-center mb-6" style="background: linear-gradient(135deg, {{PRIMARY_COLOR|default:'#6366f1'}}, {{SECONDARY_COLOR|default:'#a21caf'}});">
+                            <i :class="feature.icon + ' text-white text-2xl'"></i>
+                        </div>
+                        <h3 class="text-xl font-bold text-gray-900 mb-3" x-text="feature.title"></h3>
+                        <p class="text-gray-600 leading-relaxed" x-text="feature.description"></p>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </section>
+    
+    <!-- How It Works -->
+    <section id="how-it-works" class="py-24 px-6 bg-gray-50">
+        <div class="max-w-7xl mx-auto">
+            <div class="text-center mb-16">
+                <p class="text-primary font-semibold mb-4">HOW IT WORKS</p>
+                <h2 class="text-4xl font-bold text-gray-900 mb-4">{{STEPS_TITLE}}</h2>
+                <p class="text-xl text-gray-600 max-w-2xl mx-auto">{{STEPS_SUBTITLE}}</p>
+            </div>
+            
+            <div class="grid md:grid-cols-3 gap-8" x-data="{ steps: {{STEPS_JSON}} }">
+                <template x-for="(step, index) in steps" :key="step.id">
+                    <div class="relative">
+                        <div class="bg-white rounded-2xl p-8 border border-gray-100">
+                            <div class="w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-xl mb-6" style="background: linear-gradient(135deg, {{PRIMARY_COLOR|default:'#6366f1'}}, {{SECONDARY_COLOR|default:'#a21caf'}});" x-text="index + 1"></div>
+                            <h3 class="text-xl font-bold text-gray-900 mb-3" x-text="step.title"></h3>
+                            <p class="text-gray-600 leading-relaxed" x-text="step.description"></p>
+                        </div>
+                        <div x-show="index < steps.length - 1" class="hidden md:block absolute top-1/2 -right-4 transform -translate-y-1/2">
+                            <i class="fas fa-arrow-right text-2xl text-gray-300"></i>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </section>
+    
+    <!-- Pricing Section -->
+    <section id="pricing" class="py-24 px-6">
+        <div class="max-w-7xl mx-auto">
+            <div class="text-center mb-16">
+                <p class="text-primary font-semibold mb-4">PRICING</p>
+                <h2 class="text-4xl font-bold text-gray-900 mb-4">{{PRICING_TITLE}}</h2>
+                <p class="text-xl text-gray-600 max-w-2xl mx-auto">{{PRICING_SUBTITLE}}</p>
+            </div>
+            
+            <div class="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto" x-data="{ plans: {{PRICING_JSON}} }">
+                <template x-for="plan in plans" :key="plan.id">
+                    <div :class="plan.featured ? 'border-2 border-primary shadow-lg shadow-primary/10 scale-105' : 'border border-gray-200'" class="bg-white rounded-2xl p-8 relative">
+                        <div x-show="plan.featured" class="absolute -top-4 left-1/2 transform -translate-x-1/2 text-white px-4 py-1 rounded-full text-sm font-medium" style="background: linear-gradient(135deg, {{PRIMARY_COLOR|default:'#6366f1'}}, {{SECONDARY_COLOR|default:'#a21caf'}});">
+                            Most Popular
+                        </div>
+                        <h3 class="text-xl font-bold text-gray-900 mb-2" x-text="plan.name"></h3>
+                        <p class="text-gray-600 mb-6" x-text="plan.description"></p>
+                        <div class="mb-6">
+                            <span class="text-5xl font-bold text-gray-900" x-text="'$' + plan.price"></span>
+                            <span class="text-gray-500">/month</span>
+                        </div>
+                        <ul class="space-y-3 mb-8">
+                            <template x-for="feature in plan.features">
+                                <li class="flex items-center gap-2">
+                                    <i class="fas fa-check text-green-500"></i>
+                                    <span class="text-gray-600" x-text="feature"></span>
+                                </li>
+                            </template>
+                        </ul>
+                        <a href="#cta" :class="plan.featured ? 'text-white' : 'bg-gray-100 text-gray-900 hover:bg-gray-200'" class="block w-full py-3 rounded-full text-center font-semibold transition" style="background: linear-gradient(135deg, {{PRIMARY_COLOR|default:'#6366f1'}}, {{SECONDARY_COLOR|default:'#a21caf'}});">
+                            Get Started
+                        </a>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </section>
+    
+    <!-- Testimonials -->
+    <section id="testimonials" class="py-24 px-6 bg-gray-50">
+        <div class="max-w-7xl mx-auto">
+            <div class="text-center mb-16">
+                <p class="text-primary font-semibold mb-4">TESTIMONIALS</p>
+                <h2 class="text-4xl font-bold text-gray-900 mb-4">{{TESTIMONIALS_TITLE}}</h2>
+                <p class="text-xl text-gray-600 max-w-2xl mx-auto">{{TESTIMONIALS_SUBTITLE}}</p>
+            </div>
+            
+            <div class="grid md:grid-cols-3 gap-8" x-data="{ testimonials: {{TESTIMONIALS_JSON}} }">
+                <template x-for="testimonial in testimonials" :key="testimonial.id">
+                    <div class="bg-white rounded-2xl p-8 border border-gray-100">
+                        <div class="flex gap-1 mb-4">
+                            <template x-for="i in 5">
+                                <i class="fas fa-star text-yellow-400"></i>
+                            </template>
+                        </div>
+                        <p class="text-gray-600 leading-relaxed mb-6" x-text="testimonial.quote"></p>
+                        <div class="flex items-center gap-4">
+                            <img :src="testimonial.avatar" class="w-12 h-12 rounded-full object-cover">
+                            <div>
+                                <p class="font-semibold text-gray-900" x-text="testimonial.name"></p>
+                                <p class="text-sm text-gray-500" x-text="testimonial.role"></p>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </section>
+    
+    <!-- CTA Section -->
+    <section id="cta" class="py-24 px-6">
+        <div class="max-w-4xl mx-auto">
+            <div class="rounded-3xl p-12 text-center text-white relative overflow-hidden" style="background: linear-gradient(135deg, {{PRIMARY_COLOR|default:'#6366f1'}}, {{SECONDARY_COLOR|default:'#a21caf'}});">
+                <div class="absolute inset-0 bg-black/10"></div>
+                <div class="relative z-10">
+                    <h2 class="text-4xl font-bold mb-4">{{CTA_TITLE}}</h2>
+                    <p class="text-xl opacity-90 mb-8">{{CTA_SUBTITLE}}</p>
+                    <form class="flex flex-col sm:flex-row gap-4 max-w-lg mx-auto" @submit.prevent="alert('Thanks for signing up!')">
+                        <input type="email" placeholder="Enter your email" class="flex-1 px-6 py-4 rounded-full text-gray-900 focus:outline-none focus:ring-4 focus:ring-white/30">
+                        <button type="submit" class="bg-white text-primary px-8 py-4 rounded-full font-semibold hover:bg-gray-100 transition">
+                            Get Started Free
+                        </button>
+                    </form>
+                    <p class="text-sm opacity-75 mt-4">No credit card required. Start your free trial today.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+    
+    <!-- Footer -->
+    <footer class="bg-gray-900 text-white py-16 px-6">
+        <div class="max-w-7xl mx-auto">
+            <div class="grid md:grid-cols-4 gap-12 mb-12">
+                <div>
+                    <div class="flex items-center gap-2 mb-4">
+                        <div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background: linear-gradient(135deg, {{PRIMARY_COLOR|default:'#6366f1'}}, {{SECONDARY_COLOR|default:'#a21caf'}});">
+                            <i class="{{LOGO_ICON}} text-white"></i>
+                        </div>
+                        <span class="text-xl font-bold">{{BRAND_NAME}}</span>
+                    </div>
+                    <p class="text-gray-400">{{FOOTER_DESCRIPTION}}</p>
+                </div>
+                
+                <div>
+                    <h4 class="font-semibold mb-4">Product</h4>
+                    <ul class="space-y-2 text-gray-400">
+                        <li><a href="#features" class="hover:text-white transition">Features</a></li>
+                        <li><a href="#pricing" class="hover:text-white transition">Pricing</a></li>
+                        <li><a href="#" class="hover:text-white transition">Integrations</a></li>
+                        <li><a href="#" class="hover:text-white transition">API</a></li>
+                    </ul>
+                </div>
+                
+                <div>
+                    <h4 class="font-semibold mb-4">Company</h4>
+                    <ul class="space-y-2 text-gray-400">
+                        <li><a href="#" class="hover:text-white transition">About</a></li>
+                        <li><a href="#" class="hover:text-white transition">Blog</a></li>
+                        <li><a href="#" class="hover:text-white transition">Careers</a></li>
+                        <li><a href="#" class="hover:text-white transition">Contact</a></li>
+                    </ul>
+                </div>
+                
+                <div>
+                    <h4 class="font-semibold mb-4">Legal</h4>
+                    <ul class="space-y-2 text-gray-400">
+                        <li><a href="#" class="hover:text-white transition">Privacy</a></li>
+                        <li><a href="#" class="hover:text-white transition">Terms</a></li>
+                        <li><a href="#" class="hover:text-white transition">Cookies</a></li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="border-t border-gray-800 pt-8 flex flex-col md:flex-row justify-between items-center">
+                <p class="text-gray-400 text-sm">© 2024 {{BRAND_NAME}}. All rights reserved.</p>
+                <div class="flex gap-4 mt-4 md:mt-0">
+                    <a href="#" class="w-10 h-10 rounded-full bg-gray-800 flex items-center justify-center hover:bg-gray-700 transition">
+                        <i class="fab fa-twitter"></i>
+                    </a>
+                    <a href="#" class="w-10 h-10 rounded-full bg-gray-800 flex items-center justify-center hover:bg-gray-700 transition">
+                        <i class="fab fa-linkedin-in"></i>
+                    </a>
+                    <a href="#" class="w-10 h-10 rounded-full bg-gray-800 flex items-center justify-center hover:bg-gray-700 transition">
+                        <i class="fab fa-github"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </footer>
+</body>
+</html>

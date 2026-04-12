@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  codebot:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - APP_BASE_PATH=/codebot
+      - APP_BASE_URL=http://localhost:8000
+      - FAL_KEY=${FAL_KEY}
+      - XAI_API_KEY=${XAI_API_KEY}
+      - XAI_BASE_URL=${XAI_BASE_URL:-https://api.x.ai/v1}
+      - GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID}
+      - GOOGLE_OAUTH_CLIENT_SECRET=${GOOGLE_OAUTH_CLIENT_SECRET}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
+      - STRIPE_PRICE_ID_PLUS=${STRIPE_PRICE_ID_PLUS}
+      - STRIPE_PRICE_ID_PRO=${STRIPE_PRICE_ID_PRO}
+      - STRIPE_PRICE_ID_CBT_500=${STRIPE_PRICE_ID_CBT_500}
+      - STRIPE_PRICE_ID_CBT_2000=${STRIPE_PRICE_ID_CBT_2000}
+      - STRIPE_PRICE_ID_CBT_5000=${STRIPE_PRICE_ID_CBT_5000}
+      - STRIPE_ALLOW_LIVE=${STRIPE_ALLOW_LIVE:-false}
+      - JWT_SECRET=${JWT_SECRET}
+      - SESSION_SECRET=${SESSION_SECRET}
+      - NETLIFY_AUTH_TOKEN=${NETLIFY_AUTH_TOKEN}
+      - DATA_DIR=/app/data
+    volumes:
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s

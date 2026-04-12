@@ -1,0 +1,45 @@
+# Dependencies
+node_modules/
+.venv/
+__pycache__/
+*.pyc
+
+# Environment (SECRETS)
+.env
+.env.local
+*.env.local
+
+# Build artifacts
+.next/
+dist/
+build/
+*.egg-info/
+
+# Data
+data/
+data_local/
+*.db
+*.sqlite
+*.sqlite3
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Legacy/quarantine
+_legacy/
+_quarantine*/
+_releases/
+
+# Logs
+*.log
+*.pid
+
+# Temp files
+tmp_*

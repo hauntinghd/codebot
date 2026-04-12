@@ -1,0 +1,440 @@
+"use client";
+
+import React, {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useCallback,
+} from "react";
+import Link from "next/link";
+import AuthGate from "@/components/AuthGate";
+
+const BASE = "/codebot";
+
+type WhoAmI = {
+  authenticated: boolean;
+  id?: string;
+  email?: string;
+  is_admin?: boolean;
+};
+
+async function apiJson<T>(
+  path: string
+): Promise<{ ok: boolean; status: number; data?: T }> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: "GET",
+    credentials: "include",
+    cache: "no-store",
+    headers: { accept: "application/json" },
+  });
+
+  const ct = res.headers.get("content-type") || "";
+  if (!ct.includes("application/json")) return { ok: false, status: res.status };
+  const data = (await res.json().catch(() => undefined)) as T | undefined;
+  return { ok: res.ok, status: res.status, data };
+}
+
+function Tag({
+  children,
+  tone = "neutral",
+}: {
+  children: React.ReactNode;
+  tone?: "neutral" | "ok" | "warn";
+}) {
+  const cls =
+    tone === "ok"
+      ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-200"
+      : tone === "warn"
+      ? "border-amber-500/25 bg-amber-500/10 text-amber-200"
+      : "border-white/10 bg-white/5 text-white/80";
+
+  return (
+    <span
+      className={[
+        "inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-extrabold tracking-wide whitespace-nowrap",
+        cls,
+      ].join(" ")}
+    >
+      {children}
+    </span>
+  );
+}
+
+function Card(props: {
+  title: string;
+  subtitle?: string;
+  right?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="cb-card">
+      <div className="cb-card__head">
+        <div className="min-w-0">
+          <div className="cb-card__title">{props.title}</div>
+          {props.subtitle ? (
+            <div className="cb-card__sub">{props.subtitle}</div>
+          ) : null}
+        </div>
+        {props.right ? <div className="shrink-0">{props.right}</div> : null}
+      </div>
+      <div className="cb-card__body">{props.children}</div>
+    </div>
+  );
+}
+
+function initials(email?: string) {
+  if (!email) return "U";
+  const left = email.split("@")[0] || "";
+  const parts = left.split(/[._-]+/).filter(Boolean);
+  const a = (parts[0]?.[0] || left[0] || "U").toUpperCase();
+  const b = (parts[1]?.[0] || left[1] || "").toUpperCase();
+  return (a + b).trim() || "U";
+}
+
+/**
+ * Close dropdown when clicking outside OR pressing Escape.
+ * Uses refs that can be null without TypeScript fighting you.
+ */
+function useOutsideClose(
+  open: boolean,
+  refs: Array<React.RefObject<HTMLElement | null>>,
+  onClose: () => void
+) {
+  useEffect(() => {
+    if (!open) return;
+
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Node | null;
+      if (!t) return;
+
+      for (const r of refs) {
+        const el = r.current;
+        if (el && el.contains(t)) return;
+      }
+      onClose();
+    };
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+
+    window.addEventListener("mousedown", onDown, { capture: true });
+    window.addEventListener("keydown", onKey);
+
+    return () => {
+      window.removeEventListener("mousedown", onDown, { capture: true } as any);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open, refs, onClose]);
+}
+
+type MenuPos = { left: number; top: number; width: number };
+
+export default function DashboardPage() {
+  const [me, setMe] = useState<WhoAmI | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState("");
+
+  // profile menu
+  const [menuOpen, setMenuOpen] = useState(false);
+  const btnRef = useRef<HTMLButtonElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  // fixed-position menu coordinates (prevents right-edge clipping)
+  const [menuPos, setMenuPos] = useState<MenuPos>({
+    left: 0,
+    top: 0,
+    width: 260,
+  });
+
+  const statusTone = useMemo(() => {
+    if (loading) return "neutral" as const;
+    if (me?.authenticated) return "ok" as const;
+    return "warn" as const;
+  }, [loading, me]);
+
+  const statusText = useMemo(() => {
+    if (loading) return "Checking…";
+    if (me?.authenticated) return "Authenticated";
+    return "Not authenticated";
+  }, [loading, me]);
+
+  const email = me?.email || "";
+  const isAdmin = !!me?.is_admin;
+
+  const load = useCallback(async () => {
+    setErr("");
+    setLoading(true);
+
+    const res = await apiJson<WhoAmI>("/api/auth/whoami");
+    if (res.ok && res.data) {
+      setMe(res.data);
+      setLoading(false);
+      return;
+    }
+
+    setMe(null);
+    setLoading(false);
+    setErr(`Failed to load whoami (HTTP ${res.status}).`);
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const logout = useCallback(async () => {
+    try {
+      await fetch(`${BASE}/api/auth/logout`, {
+        method: "POST",
+        credentials: "include",
+      });
+    } catch {
+      // ignore
+    }
+    window.location.assign("/codebot/login");
+  }, []);
+
+  useOutsideClose(menuOpen, [btnRef, menuRef], () => setMenuOpen(false));
+
+  /**
+   * Compute a fixed-position dropdown that:
+   * - centers under the profile button
+   * - clamps inside viewport so it never clips
+   * - updates on open, resize, scroll
+   */
+  const computeMenuPos = useCallback(() => {
+    const btn = btnRef.current;
+    if (!btn) return;
+
+    const r = btn.getBoundingClientRect();
+    const viewportW = window.innerWidth;
+    const viewportH = window.innerHeight;
+
+    const margin = 12;
+    const width = 260;
+
+    // Desired: centered under button
+    let left = r.left + r.width / 2 - width / 2;
+
+    // Clamp so it never clips
+    left = Math.max(margin, Math.min(left, viewportW - margin - width));
+
+    // Drop below button; if near bottom, still clamp (simple)
+    let top = r.bottom + 10;
+    top = Math.max(margin, Math.min(top, viewportH - margin - 260)); // 260 ~ menu height guard
+
+    setMenuPos({ left, top, width });
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!menuOpen) return;
+    computeMenuPos();
+
+    const onResize = () => computeMenuPos();
+    const onScroll = () => computeMenuPos();
+
+    window.addEventListener("resize", onResize);
+    window.addEventListener("scroll", onScroll, true);
+
+    return () => {
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("scroll", onScroll, true);
+    };
+  }, [menuOpen, computeMenuPos]);
+
+  return (
+    <AuthGate redirectTo="/login" allowCookieSessionFallback={true}>
+      <div className="cb-settings cb-bg">
+        <div className="mx-auto w-full max-w-6xl">
+          {/* Header */}
+          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+            <div className="flex flex-col gap-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <Tag tone={statusTone}>{statusText}</Tag>
+                <Tag>Cookie session • /codebot</Tag>
+                {isAdmin ? <Tag>Admin</Tag> : null}
+              </div>
+
+              <div className="text-[22px] font-black tracking-tight text-white">
+                Dashboard
+              </div>
+              <div className="text-sm text-white/70">
+                Launch builds, manage billing, and update your account.
+              </div>
+            </div>
+
+            {/* Top-right actions + profile dropdown */}
+            <div className="flex items-center gap-2">
+              <button className="cb-btn" type="button" onClick={load}>
+                Refresh
+              </button>
+
+              <Link href="/builder" className="no-underline">
+                <button className="cb-btn primary" type="button">
+                  Open Builder
+                </button>
+              </Link>
+
+              {/* Profile button */}
+              <button
+                ref={btnRef}
+                type="button"
+                className="cb-btn flex items-center gap-2"
+                onClick={() => setMenuOpen((v) => !v)}
+                aria-haspopup="menu"
+                aria-expanded={menuOpen}
+              >
+                <span className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[11px] font-black">
+                  {initials(email)}
+                </span>
+                <span className="text-sm font-extrabold">▾</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Dropdown (fixed-position; cannot clip) */}
+          {menuOpen ? (
+            <div
+              ref={menuRef}
+              role="menu"
+              className={[
+                "fixed z-[1000]",
+                "rounded-xl border border-white/10 bg-[#0b0f16]/95 backdrop-blur",
+                "shadow-[0_20px_60px_rgba(0,0,0,0.6)]",
+                "overflow-hidden",
+              ].join(" ")}
+              style={{
+                left: menuPos.left,
+                top: menuPos.top,
+                width: menuPos.width,
+              }}
+            >
+              <div className="px-3 py-3 border-b border-white/10">
+                <div className="text-[11px] font-extrabold tracking-wide text-white/55">
+                  SIGNED IN
+                </div>
+                <div className="mt-1 text-sm font-black text-white truncate">
+                  {email || "—"}
+                </div>
+                <div className="mt-1 text-[11px] text-white/50 truncate">
+                  {isAdmin ? `Admin • ${me?.id || ""}` : me?.id || ""}
+                </div>
+              </div>
+
+              <div className="p-2 grid gap-1">
+                <Link
+                  href="/account"
+                  className="no-underline"
+                  onClick={() => setMenuOpen(false)}
+                >
+                  <div className="rounded-lg px-3 py-2 text-sm font-bold text-white/85 hover:bg-white/5">
+                    Account
+                  </div>
+                </Link>
+
+                <Link
+                  href="/settings"
+                  className="no-underline"
+                  onClick={() => setMenuOpen(false)}
+                >
+                  <div className="rounded-lg px-3 py-2 text-sm font-bold text-white/85 hover:bg-white/5">
+                    Settings
+                  </div>
+                </Link>
+
+                <Link
+                  href="/account/upgrade"
+                  className="no-underline"
+                  onClick={() => setMenuOpen(false)}
+                >
+                  <div className="rounded-lg px-3 py-2 text-sm font-bold text-white/85 hover:bg-white/5">
+                    Upgrade / Billing
+                  </div>
+                </Link>
+
+                <Link
+                  href="/terms"
+                  className="no-underline"
+                  onClick={() => setMenuOpen(false)}
+                >
+                  <div className="rounded-lg px-3 py-2 text-sm font-bold text-white/85 hover:bg-white/5">
+                    Terms
+                  </div>
+                </Link>
+              </div>
+
+              <div className="p-2 border-t border-white/10">
+                <button type="button" className="cb-btn w-full" onClick={logout}>
+                  Sign out
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {err ? (
+            <div className="mb-4 whitespace-pre-wrap rounded-xl border border-red-500/25 bg-red-500/10 p-3 text-sm text-red-200">
+              {err}
+            </div>
+          ) : null}
+
+          <div className="grid grid-cols-12 gap-4">
+            <div className="col-span-12 lg:col-span-7">
+              <Card
+                title="Account Information"
+                subtitle="Your current session details"
+                right={<Tag tone={statusTone}>{statusText}</Tag>}
+              >
+                <div className="grid gap-3">
+                  <div className="rounded-2xl bg-gradient-to-br from-white/5 to-white/[0.02] border border-white/10 p-6">
+                    <div className="text-xs font-extrabold text-white/50 tracking-wider uppercase">
+                      Role
+                    </div>
+                    <div className="mt-3 text-xl font-black text-white">
+                      {loading ? "—" : me?.is_admin ? "Administrator" : "User"}
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            </div>
+
+            <div className="col-span-12 lg:col-span-5">
+              <Card title="Quick actions" subtitle="Everything important in 1 click">
+                {/* KEEP THESE EXACTLY */}
+                <div className="grid gap-2">
+                  <Link href="/builder" className="no-underline">
+                    <button className="cb-btn primary w-full" type="button">
+                      Build now
+                    </button>
+                  </Link>
+                  <Link href="/account" className="no-underline">
+                    <button className="cb-btn w-full" type="button">
+                      Account
+                    </button>
+                  </Link>
+                  <Link href="/settings" className="no-underline">
+                    <button className="cb-btn w-full" type="button">
+                      Settings
+                    </button>
+                  </Link>
+                  <Link href="/account/upgrade" className="no-underline">
+                    <button className="cb-btn w-full" type="button">
+                      Upgrade / Billing
+                    </button>
+                  </Link>
+                  <Link href="/terms" className="no-underline">
+                    <button className="cb-btn w-full" type="button">
+                      Terms
+                    </button>
+                  </Link>
+                </div>
+                {/* Removed tip + removed “minimal/ship-ready” text */}
+              </Card>
+            </div>
+          </div>
+        </div>
+      </div>
+    </AuthGate>
+  );
+}

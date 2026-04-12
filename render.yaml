@@ -1,0 +1,49 @@
+services:
+  - type: web
+    name: codebot-api
+    runtime: python
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /codebot/health
+    envVars:
+      - key: APP_BASE_URL
+        value: https://api.nyptidindustries.com
+      - key: APP_BASE_PATH
+        value: /codebot
+      - key: FAL_KEY
+        sync: false
+      - key: XAI_API_KEY
+        sync: false
+      - key: XAI_BASE_URL
+        value: https://api.x.ai/v1
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_PUBLISHABLE_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_ALLOW_LIVE
+        value: "true"
+      - key: STRIPE_PRICE_ID_PLUS
+        sync: false
+      - key: STRIPE_PRICE_ID_PRO
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: SESSION_SECRET
+        sync: false
+      - key: ADMIN_EMAILS
+        value: omatic657@gmail.com
+      - key: CODEBOT_ADMIN_EMAILS
+        value: omatic657@gmail.com
+      - key: NETLIFY_AUTH_TOKEN
+        sync: false
+      - key: GOOGLE_OAUTH_CLIENT_ID
+        sync: false
+      - key: GOOGLE_OAUTH_CLIENT_SECRET
+        sync: false
+      - key: ALLOWED_ORIGINS
+        value: "https://api.nyptidindustries.com,https://chatbot.nyptidindustries.com,http://localhost:3000"
+      - key: PYTHON_VERSION
+        value: "3.11.0"

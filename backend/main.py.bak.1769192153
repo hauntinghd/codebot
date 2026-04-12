@@ -1,0 +1,208 @@
+# backend/main.py
+"""FastAPI main entry point - CodeBot backend (host + mounted API).
+Primary objective:
+- Make Google OAuth state survive redirects reliably (fix mismatching_state / CSRF).
+Key decisions:
+- Session cookie MUST be sent on the Google -> callback navigation.
+- In HTTPS prod: SameSite=None + Secure (required for cross-site flows).
+- Scope cookie Path to APP_BASE_PATH (e.g. /codebot) to avoid collisions/duplicates.
+- Do NOT add any middleware that touches request.session unless SessionMiddleware is installed.
+"""
+from __future__ import annotations
+import json
+import logging
+import os
+from typing import List
+import httpx
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse, Response
+from prometheus_client import CONTENT_TYPE_LATEST, REGISTRY, generate_latest
+from starlette.middleware.sessions import SessionMiddleware
+from starlette.requests import Request
+from backend.routes.auth import register_routes  # IMPORTANT: used, do not re-alias
+from .auth import get_session_user_id
+from .config import (
+    ALLOWED_ORIGINS,
+    APP_BASE_PATH,
+    APP_BASE_URL,
+    REFRESH_TOKEN_TTL_SECONDS,
+    SESSION_SECRET)
+from .database import init_db
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+logger = logging.getLogger("codebot")
+logger.setLevel(logging.INFO)
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    handler.setFormatter(
+        logging.Formatter(
+            "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S")
+    )
+    logger.addHandler(handler)
+logger.info("--- Backend startup ---")
+# ---------------------------------------------------------------------------
+# DB init
+# ---------------------------------------------------------------------------
+init_db()
+# ---------------------------------------------------------------------------
+# Apps
+# ---------------------------------------------------------------------------
+# This "api" app is what we mount under APP_BASE_PATH (usually "/codebot")
+api = FastAPI(title="CodeBot API", version="1.0.0")
+# Host wrapper (nginx typically targets this app)
+app = FastAPI(title="CodeBot Host", version="1.0.0")
+# ---------------------------------------------------------------------------
+# OAuth init (Authlib) + Google client registration
+# ---------------------------------------------------------------------------
+oauth = None
+try:
+    from authlib.integrations.starlette_client import OAuth  # type: ignore
+    oauth = OAuth()
+    logger.info("[OAuth] Authlib OAuth initialized")
+    google_client_id = (os.getenv("GOOGLE_OAUTH_CLIENT_ID") or "").strip()
+    google_client_secret = (os.getenv("GOOGLE_OAUTH_CLIENT_SECRET") or "").strip()
+    if google_client_id and google_client_secret:
+        oauth.register(
+            name="google",
+            client_id=google_client_id,
+            client_secret=google_client_secret,
+            server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
+            client_kwargs={"scope": "openid email profile"})
+        logger.info("[OAuth] Google client registered (oauth.google is available)")
+    else:
+        logger.warning("[OAuth] Google client NOT registered: missing client id/secret")
+except Exception as e:
+    oauth = None
+    logger.warning(f"[OAuth] Authlib OAuth not available ({e})")
+# Register auth routes
+register_routes(api, oauth)
+# ---------------------------------------------------------------------------
+# CORS
+# ---------------------------------------------------------------------------
+def _parse_origins(value) -> List[str]:
+    if not value:
+        return []
+    if isinstance(value, (list, tuple, set)):
+        items = list(value)
+    elif isinstance(value, str):
+        s = value.strip()
+        if not s:
+            return []
+        try:
+            parsed = json.loads(s)
+            items = parsed if isinstance(parsed, list) else [s]
+        except Exception:
+            items = [x.strip() for x in s.split(",") if x.strip()]
+    else:
+        items = [str(value)]
+    out: List[str] = []
+    seen = set()
+    for raw in items:
+        o = str(raw).strip()
+        if o and o not in seen:
+            seen.add(o)
+            out.append(o)
+    return out
+DEV_ORIGINS = ["http://127.0.0.1:45001", "http://localhost:45001"]
+ENV_ORIGINS = _parse_origins(os.getenv("CODEBOT_ALLOWED_ORIGINS"))
+CFG_ORIGINS = _parse_origins(ALLOWED_ORIGINS)
+ALLOW_ORIGINS: List[str] = []
+_seen = set()
+for origin in (CFG_ORIGINS + ENV_ORIGINS + DEV_ORIGINS):
+    o = str(origin).strip()
+    if o and o not in _seen:
+        _seen.add(o)
+        ALLOW_ORIGINS.append(o)
+OFFLINE_MODE = os.getenv("OFFLINE_MODE", "").lower() == "true"
+logger.info(f"[CORS] allow_origins={ALLOW_ORIGINS}")
+logger.info(f"[CORS] offline_mode={OFFLINE_MODE}")
+api.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOW_ORIGINS,
+    allow_origin_regex=(
+        r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$" if OFFLINE_MODE else None
+    ),
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"])
+# ---------------------------------------------------------------------------
+# Session middleware (OAuth state must survive redirects)
+# ---------------------------------------------------------------------------
+_is_https = str(APP_BASE_URL).lower().startswith("https")
+_same_site = "none" if _is_https else "lax"
+_cookie_path = (APP_BASE_PATH or "/").rstrip("/") or "/"
+api.add_middleware(
+    SessionMiddleware,
+    secret_key=SESSION_SECRET,
+    session_cookie=f"cb_session{APP_BASE_PATH.replace('/', '_')}",
+    https_only=_is_https,
+    max_age=REFRESH_TOKEN_TTL_SECONDS,
+    same_site=_same_site,
+    path=_cookie_path,
+)
+# ---------------------------------------------------------------------------
+# Proxy helper (Node service behind /api/billing and /api/credits)
+# ---------------------------------------------------------------------------
+NODE_SERVICE_BASE = (os.getenv("NODE_SERVICE_BASE", "http://127.0.0.1:4001") or "").strip()
+def _strip_base_path(path: str) -> str:
+    if APP_BASE_PATH and path.startswith(APP_BASE_PATH):
+        return path[len(APP_BASE_PATH):]
+    return path
+def _filter_hop_by_hop_headers(headers: dict) -> dict:
+    out = dict(headers)
+    out.pop("host", None)
+    out.pop("content-length", None)
+    out.pop("connection", None)
+    out.pop("transfer-encoding", None)
+    return out
+async def proxy_to_node(request: Request) -> Response:
+    path = _strip_base_path(request.url.path)
+    query = request.url.query
+    target = f"{NODE_SERVICE_BASE}{path}"
+    if query:
+        target += f"?{query}"
+    headers = _filter_hop_by_hop_headers(dict(request.headers))
+    try:
+        uid = get_session_user_id(request)
+        if uid:
+            headers["x-user-id"] = str(uid)
+    except Exception:
+        pass
+    body = await request.body()
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.request(
+            request.method,
+            target,
+            content=body,
+            headers=headers)
+    out_headers = dict(resp.headers)
+    out_headers.pop("transfer-encoding", None)
+    out_headers.pop("connection", None)
+    out_headers.pop("content-encoding", None)
+    return Response(content=resp.content, status_code=resp.status_code, headers=out_headers)
+@api.api_route(
+    "/api/credits/{path:path}",
+    methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"])
+async def proxy_credits(path: str, request: Request):
+    return await proxy_to_node(request)
+@api.api_route(
+    "/api/billing/{path:path}",
+    methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"])
+async def proxy_billing(path: str, request: Request):
+    return await proxy_to_node(request)
+@api.api_route("/health", methods=["GET", "HEAD"], include_in_schema=False)
+def health():
+    return {"ok": True}
+# ---------------------------------------------------------------------------
+# Mount API under APP_BASE_PATH (typically "/codebot")
+# ---------------------------------------------------------------------------
+app.mount(APP_BASE_PATH, api)
+@app.get("/", include_in_schema=False)
+def root():
+    return RedirectResponse(url=f"{APP_BASE_PATH}/")
+@app.get("/metrics", include_in_schema=False)
+async def metrics():
+    return Response(content=generate_latest(REGISTRY), media_type=CONTENT_TYPE_LATEST)

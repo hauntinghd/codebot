@@ -1,0 +1,791 @@
+import { Suspense } from "react";
+import SettingsInner from "./SettingsInner";
+
+export default function SettingsPage() {
+  return (
+    <Suspense fallback={null}>
+      <SettingsInner />
+    </Suspense>
+  );
+}
+"use client";
+
+import React, { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+
+type MeOut = {
+  id: string;
+  email: string;
+  is_admin: boolean;
+  subscription_status?: string;
+  plan?: string;
+  current_period_end?: number;
+  credits_remaining?: number | null;
+};
+
+type ByokStatus = {
+  ok?: boolean;
+  has_key?: boolean;
+  provider?: string | null;
+};
+
+const BASE = "/codebot";
+
+type TabKey = "profile" | "notifications" | "appearance" | "security";
+
+function cx(...parts: Array<string | false | null | undefined>) {
+  return parts.filter(Boolean).join(" ");
+}
+
+async function safeReadText(res: Response): Promise<string> {
+  try {
+    return await res.text();
+  } catch {
+    return "";
+  }
+}
+
+function Banner({
+  tone,
+  title,
+  children,
+}: {
+  tone: "error" | "warn" | "info" | "success";
+  title: string;
+  children?: React.ReactNode;
+}) {
+  const tones: Record<string, string> = {
+    error: "border-red-500/30 bg-red-500/10 text-red-100",
+    warn: "border-yellow-500/30 bg-yellow-500/10 text-yellow-100",
+    info: "border-blue-500/30 bg-blue-500/10 text-blue-100",
+    success: "border-emerald-500/30 bg-emerald-500/10 text-emerald-100",
+  };
+
+  return (
+    <div className={cx("rounded-xl border p-4", tones[tone])}>
+      <div className="font-semibold">{title}</div>
+      {children ? <div className="mt-2 text-sm opacity-90">{children}</div> : null}
+    </div>
+  );
+}
+
+function Card({
+  title,
+  subtitle,
+  children,
+  right,
+}: {
+  title: string;
+  subtitle?: string;
+  right?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-black/30 shadow-[0_0_0_1px_rgba(255,255,255,0.03)]">
+      <div className="flex items-start justify-between gap-4 border-b border-white/10 p-5">
+        <div>
+          <div className="text-base font-semibold text-white">{title}</div>
+          {subtitle ? <div className="mt-1 text-sm text-white/70">{subtitle}</div> : null}
+        </div>
+        {right ? <div className="shrink-0">{right}</div> : null}
+      </div>
+      <div className="p-5">{children}</div>
+    </div>
+  );
+}
+
+function Input({
+  label,
+  value,
+  onChange,
+  placeholder,
+  type = "text",
+  disabled,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  type?: string;
+  disabled?: boolean;
+}) {
+  return (
+    <label className="block">
+      <div className="mb-2 text-sm font-medium text-white/80">{label}</div>
+      <input
+        type={type}
+        value={value}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className={cx(
+          "w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-white outline-none",
+          "placeholder:text-white/35 focus:border-white/25 focus:ring-2 focus:ring-white/10",
+          disabled && "opacity-60"
+        )}
+      />
+    </label>
+  );
+}
+
+function Select({
+  label,
+  value,
+  onChange,
+  options,
+  disabled,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: Array<{ value: string; label: string }>;
+  disabled?: boolean;
+}) {
+  return (
+    <label className="block">
+      <div className="mb-2 text-sm font-medium text-white/80">{label}</div>
+      <select
+        value={value}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value)}
+        className={cx(
+          "w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-white outline-none",
+          "focus:border-white/25 focus:ring-2 focus:ring-white/10",
+          disabled && "opacity-60"
+        )}
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function Button({
+  children,
+  onClick,
+  disabled,
+  variant = "primary",
+  type = "button",
+}: {
+  children: React.ReactNode;
+  onClick?: () => void;
+  disabled?: boolean;
+  variant?: "primary" | "secondary" | "danger";
+  type?: "button" | "submit";
+}) {
+  const styles =
+    variant === "primary"
+      ? "bg-white/10 hover:bg-white/15 border-white/15 text-white"
+      : variant === "secondary"
+      ? "bg-black/20 hover:bg-black/10 border-white/10 text-white/90"
+      : "bg-red-500/10 hover:bg-red-500/15 border-red-500/25 text-red-100";
+
+  return (
+    <button
+      type={type}
+      disabled={disabled}
+      onClick={onClick}
+      className={cx(
+        "inline-flex items-center justify-center rounded-xl border px-4 py-2 text-sm font-medium",
+        "transition focus:outline-none focus:ring-2 focus:ring-white/10",
+        styles,
+        disabled && "opacity-50 cursor-not-allowed"
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+export default function SettingsPage() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const sp = useSearchParams();
+
+  const tab = (sp.get("tab") as TabKey) || "profile";
+
+  const [me, setMe] = useState<MeOut | null>(null);
+  const [meErr, setMeErr] = useState<string>("");
+
+  // Profile
+  const [displayName, setDisplayName] = useState("");
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [profileMsg, setProfileMsg] = useState<string>("");
+
+  // Notifications (UI-only)
+  const [notifProduct, setNotifProduct] = useState(true);
+  const [notifSecurity, setNotifSecurity] = useState(true);
+  const [notifMarketing, setNotifMarketing] = useState(false);
+
+  // Appearance (UI-only)
+  const [theme, setTheme] = useState<"dark" | "light">("dark");
+
+  // Security
+  const [pwCurrent, setPwCurrent] = useState("");
+  const [pwNew, setPwNew] = useState("");
+  const [pwNew2, setPwNew2] = useState("");
+  const [savingPw, setSavingPw] = useState(false);
+  const [pwMsg, setPwMsg] = useState<string>("");
+
+  // BYOK
+  const [byok, setByok] = useState<ByokStatus | null>(null);
+  const [byokProvider, setByokProvider] = useState("openai");
+  const [byokKey, setByokKey] = useState("");
+  const [byokBusy, setByokBusy] = useState(false);
+
+  // Status banner for BYOK
+  const [byokBanner, setByokBanner] = useState<
+    | { tone: "error" | "warn" | "info" | "success"; title: string; body?: string }
+    | null
+  >(null);
+
+  const tabs = useMemo(
+    () =>
+      [
+        { key: "profile", label: "Profile", icon: "👤" },
+        { key: "notifications", label: "Notifications", icon: "🔔" },
+        { key: "appearance", label: "Appearance", icon: "🎨" },
+        { key: "security", label: "Security", icon: "🛡️" },
+      ] as Array<{ key: TabKey; label: string; icon: string }>,
+    []
+  );
+
+  function setTab(next: TabKey) {
+    const nextUrl = `${pathname}?tab=${next}`;
+    router.replace(nextUrl);
+  }
+
+  async function loadMe() {
+    setMeErr("");
+    try {
+      const res = await fetch(`${BASE}/api/me`, { credentials: "include" });
+      if (!res.ok) {
+        const t = await safeReadText(res);
+        throw new Error(`HTTP ${res.status}: ${t || "Failed to load /me"}`);
+      }
+      const data = (await res.json()) as MeOut;
+      setMe(data);
+      // if backend doesn’t support display_name yet, use email as fallback
+      setDisplayName((data as any).display_name || "");
+    } catch (e: any) {
+      setMe(null);
+      setMeErr(e?.message || "Failed to load user session");
+    }
+  }
+
+  async function loadByokStatus() {
+    setByokBanner(null);
+    setByok(null);
+
+    // Your UI is calling some endpoint that currently 404s.
+    // We make this robust:
+    // - 404 => treat as "not deployed" (info, not error)
+    // - 403 => treat as "not eligible" (warn + upgrade CTA)
+    // - 200 => show real status
+    try {
+      const res = await fetch(`${BASE}/api/byok/status`, { credentials: "include" });
+
+      if (res.status === 404) {
+        setByokBanner({
+          tone: "info",
+          title: "BYOK is currently unavailable",
+          body: "The backend BYOK status endpoint isn’t deployed yet. This is not a user error.",
+        });
+        return;
+      }
+
+      if (res.status === 403) {
+        const t = await safeReadText(res);
+        setByokBanner({
+          tone: "warn",
+          title: "BYOK requires a paid plan (or admin)",
+          body: t || "Upgrade your plan to unlock BYOK.",
+        });
+        return;
+      }
+
+      if (!res.ok) {
+        const t = await safeReadText(res);
+        setByokBanner({
+          tone: "error",
+          title: "Failed to load BYOK status",
+          body: `HTTP ${res.status}: ${t || "Unknown error"}`,
+        });
+        return;
+      }
+
+      const data = (await res.json()) as ByokStatus;
+      setByok(data);
+      setByokBanner({
+        tone: "success",
+        title: "BYOK status loaded",
+        body: data?.has_key ? `Key saved (${data.provider || "provider"})` : "No key saved",
+      });
+    } catch (e: any) {
+      setByokBanner({
+        tone: "error",
+        title: "Failed to load BYOK status",
+        body: e?.message || "Unknown error",
+      });
+    }
+  }
+
+  useEffect(() => {
+    loadMe();
+    loadByokStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function saveProfile() {
+    setProfileMsg("");
+    setSavingProfile(true);
+    try {
+      // Backend route note:
+      // You currently mention /codebot/api/profile in the UI.
+      // Here we call /api/profile under basePath.
+      const res = await fetch(`${BASE}/api/profile`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ display_name: displayName }),
+      });
+      if (!res.ok) {
+        const t = await safeReadText(res);
+        throw new Error(`HTTP ${res.status}: ${t || "Failed to save profile"}`);
+      }
+      setProfileMsg("Saved.");
+      await loadMe();
+    } catch (e: any) {
+      setProfileMsg(e?.message || "Failed to save.");
+    } finally {
+      setSavingProfile(false);
+    }
+  }
+
+  async function updatePassword() {
+    setPwMsg("");
+    if (pwNew.length < 8) {
+      setPwMsg("New password must be at least 8 characters.");
+      return;
+    }
+    if (pwNew !== pwNew2) {
+      setPwMsg("New password fields do not match.");
+      return;
+    }
+
+    setSavingPw(true);
+    try {
+      const res = await fetch(`${BASE}/api/auth/password`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ current_password: pwCurrent, new_password: pwNew }),
+      });
+
+      // OAuth-only accounts might be blocked; show clean message
+      if (res.status === 403) {
+        const t = await safeReadText(res);
+        setPwMsg(t || "Password changes are restricted for OAuth-only accounts.");
+        return;
+      }
+
+      if (!res.ok) {
+        const t = await safeReadText(res);
+        throw new Error(`HTTP ${res.status}: ${t || "Failed to update password"}`);
+      }
+
+      setPwMsg("Password updated.");
+      setPwCurrent("");
+      setPwNew("");
+      setPwNew2("");
+    } catch (e: any) {
+      setPwMsg(e?.message || "Failed to update password.");
+    } finally {
+      setSavingPw(false);
+    }
+  }
+
+  async function saveByokKey() {
+    setByokBusy(true);
+    try {
+      const res = await fetch(`${BASE}/api/byok/save`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ provider: byokProvider, api_key: byokKey }),
+      });
+
+      if (res.status === 404) {
+        setByokBanner({
+          tone: "info",
+          title: "BYOK save endpoint isn’t deployed",
+          body: "Implement /api/byok/save on the backend, then this will work.",
+        });
+        return;
+      }
+
+      if (res.status === 403) {
+        const t = await safeReadText(res);
+        setByokBanner({
+          tone: "warn",
+          title: "Not eligible for BYOK",
+          body: t || "Upgrade your plan to unlock BYOK.",
+        });
+        return;
+      }
+
+      if (!res.ok) {
+        const t = await safeReadText(res);
+        throw new Error(`HTTP ${res.status}: ${t || "Failed to save key"}`);
+      }
+
+      setByokKey("");
+      await loadByokStatus();
+    } catch (e: any) {
+      setByokBanner({
+        tone: "error",
+        title: "Failed to save BYOK key",
+        body: e?.message || "Unknown error",
+      });
+    } finally {
+      setByokBusy(false);
+    }
+  }
+
+  async function deleteByokKey() {
+    setByokBusy(true);
+    try {
+      const res = await fetch(`${BASE}/api/byok/delete`, {
+        method: "POST",
+        credentials: "include",
+      });
+
+      if (res.status === 404) {
+        setByokBanner({
+          tone: "info",
+          title: "BYOK delete endpoint isn’t deployed",
+          body: "Implement /api/byok/delete on the backend, then this will work.",
+        });
+        return;
+      }
+
+      if (!res.ok) {
+        const t = await safeReadText(res);
+        throw new Error(`HTTP ${res.status}: ${t || "Failed to delete key"}`);
+      }
+
+      await loadByokStatus();
+    } catch (e: any) {
+      setByokBanner({
+        tone: "error",
+        title: "Failed to delete BYOK key",
+        body: e?.message || "Unknown error",
+      });
+    } finally {
+      setByokBusy(false);
+    }
+  }
+
+  const planLabel = useMemo(() => {
+    const plan = (me?.plan || "none").toLowerCase();
+    if (me?.is_admin) return "admin";
+    if (plan && plan !== "none") return plan;
+    return me?.subscription_status && me.subscription_status !== "none"
+      ? me.subscription_status
+      : "free";
+  }, [me]);
+
+  return (
+    <div className="min-h-[calc(100vh-0px)] bg-gradient-to-br from-black via-[#08101f] to-black text-white">
+      <div className="mx-auto w-full max-w-6xl px-4 py-6">
+        <div className="mb-5 flex items-center justify-between gap-4">
+          <div>
+            <div className="text-2xl font-semibold tracking-tight">Settings</div>
+            <div className="mt-1 text-sm text-white/70">Manage account preferences and security.</div>
+          </div>
+
+          <Link
+            href={`${BASE}/dashboard/`}
+            className="rounded-xl border border-white/10 bg-black/20 px-4 py-2 text-sm text-white/90 hover:bg-black/10"
+          >
+            ← Back to Dashboard
+          </Link>
+        </div>
+
+        {meErr ? (
+          <Banner tone="error" title="Session error">
+            {meErr}
+          </Banner>
+        ) : null}
+
+        <div className="mt-5 grid grid-cols-12 gap-5">
+          {/* Left rail */}
+          <div className="col-span-12 md:col-span-4">
+            <div className="rounded-2xl border border-white/10 bg-black/30 p-2">
+              <div className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-white/50">
+                Sections
+              </div>
+              <div className="space-y-1">
+                {tabs.map((t) => {
+                  const active = tab === t.key;
+                  return (
+                    <button
+                      key={t.key}
+                      onClick={() => setTab(t.key)}
+                      className={cx(
+                        "flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm",
+                        "transition",
+                        active
+                          ? "bg-white/10 text-white border border-white/10"
+                          : "text-white/80 hover:bg-white/5"
+                      )}
+                    >
+                      <span className="text-base">{t.icon}</span>
+                      <span className="font-medium">{t.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="mt-3 border-t border-white/10 px-3 py-3 text-sm text-white/70">
+                <div className="flex items-center justify-between">
+                  <span>Plan</span>
+                  <span className="rounded-lg border border-white/10 bg-black/20 px-2 py-1 text-xs text-white/80">
+                    {planLabel}
+                  </span>
+                </div>
+
+                <div className="mt-3 flex gap-2">
+                  <Link
+                    href={`${BASE}/account/`}
+                    className="flex-1 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-center text-sm text-white/90 hover:bg-black/10"
+                  >
+                    Account
+                  </Link>
+                  <Link
+                    href={`${BASE}/upgrade/`}
+                    className="flex-1 rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-center text-sm font-medium text-white hover:bg-white/15"
+                  >
+                    Upgrade
+                  </Link>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Right panel */}
+          <div className="col-span-12 md:col-span-8 space-y-5">
+            {tab === "profile" ? (
+              <Card
+                title="Profile"
+                subtitle="Update display name and review your account email."
+                right={
+                  <Button disabled={savingProfile} onClick={saveProfile}>
+                    {savingProfile ? "Saving…" : "Save changes"}
+                  </Button>
+                }
+              >
+                <div className="grid gap-4">
+                  <Input
+                    label="Display name"
+                    value={displayName}
+                    onChange={setDisplayName}
+                    placeholder="Enter your name"
+                  />
+                  <Input label="Email" value={me?.email || ""} onChange={() => {}} disabled />
+                  {profileMsg ? (
+                    <div className="text-sm text-white/80">
+                      <span className="rounded-lg border border-white/10 bg-black/20 px-2 py-1">
+                        {profileMsg}
+                      </span>
+                    </div>
+                  ) : null}
+                </div>
+              </Card>
+            ) : null}
+
+            {tab === "notifications" ? (
+              <Card
+                title="Notifications"
+                subtitle="UI-only for now. Wire to backend later if you want persistence."
+                right={<Button variant="secondary" onClick={() => {}}>Save changes</Button>}
+              >
+                <div className="space-y-3">
+                  {[
+                    { label: "Product updates", v: notifProduct, set: setNotifProduct },
+                    { label: "Security alerts", v: notifSecurity, set: setNotifSecurity },
+                    { label: "Marketing", v: notifMarketing, set: setNotifMarketing },
+                  ].map((x) => (
+                    <label
+                      key={x.label}
+                      className="flex items-center justify-between rounded-xl border border-white/10 bg-black/20 px-4 py-3"
+                    >
+                      <span className="text-sm text-white/90">{x.label}</span>
+                      <input
+                        type="checkbox"
+                        checked={x.v}
+                        onChange={(e) => x.set(e.target.checked)}
+                        className="h-4 w-4"
+                      />
+                    </label>
+                  ))}
+                </div>
+              </Card>
+            ) : null}
+
+            {tab === "appearance" ? (
+              <Card
+                title="Appearance"
+                subtitle="Keep your default dark theme for the CodeBot aesthetic."
+                right={<Button variant="secondary" onClick={() => {}}>Save changes</Button>}
+              >
+                <div className="grid gap-4">
+                  <Select
+                    label="Theme"
+                    value={theme}
+                    onChange={(v) => setTheme(v === "light" ? "light" : "dark")}
+                    options={[
+                      { value: "dark", label: "Dark (recommended)" },
+                      { value: "light", label: "Light (optional)" },
+                    ]}
+                  />
+                  <div className="text-sm text-white/60">
+                    Tip: we can later persist this in the user profile and apply it app-wide.
+                  </div>
+                </div>
+              </Card>
+            ) : null}
+
+            {tab === "security" ? (
+              <>
+                <Card title="Change password" subtitle="OAuth-only accounts may be restricted.">
+                  <div className="grid gap-4">
+                    <Input
+                      label="Current password"
+                      type="password"
+                      value={pwCurrent}
+                      onChange={setPwCurrent}
+                      placeholder="••••••••"
+                    />
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <Input
+                        label="New password"
+                        type="password"
+                        value={pwNew}
+                        onChange={setPwNew}
+                        placeholder="Min 8 characters"
+                      />
+                      <Input
+                        label="Confirm new password"
+                        type="password"
+                        value={pwNew2}
+                        onChange={setPwNew2}
+                        placeholder="Repeat new password"
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <Button disabled={savingPw} onClick={updatePassword}>
+                        {savingPw ? "Updating…" : "Update password"}
+                      </Button>
+                      {pwMsg ? <div className="text-sm text-white/70">{pwMsg}</div> : null}
+                    </div>
+                  </div>
+                </Card>
+
+                <Card
+                  title="Bring your own key (BYOK)"
+                  subtitle="If your plan supports BYOK, store your key securely on the backend."
+                  right={
+                    <div className="flex gap-2">
+                      <Button variant="secondary" onClick={loadByokStatus} disabled={byokBusy}>
+                        Refresh status
+                      </Button>
+                      <Button variant="danger" onClick={deleteByokKey} disabled={byokBusy}>
+                        Delete key
+                      </Button>
+                    </div>
+                  }
+                >
+                  {byokBanner ? (
+                    <div className="mb-4">
+                      <Banner tone={byokBanner.tone} title={byokBanner.title}>
+                        {byokBanner.body}
+                        {byokBanner.tone === "warn" ? (
+                          <div className="mt-2">
+                            <Link
+                              href={`${BASE}/upgrade/`}
+                              className="inline-flex rounded-lg border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-medium text-white hover:bg-white/15"
+                            >
+                              Upgrade to unlock BYOK →
+                            </Link>
+                          </div>
+                        ) : null}
+                      </Banner>
+                    </div>
+                  ) : null}
+
+                  <div className="grid gap-4">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+                        <div className="text-xs uppercase tracking-wider text-white/50">
+                          Current status
+                        </div>
+                        <div className="mt-2 text-sm text-white/90">
+                          {byok?.has_key ? "Key saved" : "No key saved"}
+                        </div>
+                        <div className="mt-1 text-sm text-white/70">
+                          Provider: {byok?.provider || "—"}
+                        </div>
+                      </div>
+
+                      <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+                        <div className="text-xs uppercase tracking-wider text-white/50">Plan</div>
+                        <div className="mt-2 text-sm text-white/90">{planLabel}</div>
+                        <div className="mt-1 text-sm text-white/70">
+                          Admin/premium plans typically unlock BYOK.
+                        </div>
+                      </div>
+                    </div>
+
+                    <Select
+                      label="Provider"
+                      value={byokProvider}
+                      onChange={setByokProvider}
+                      options={[
+                        { value: "openai", label: "OpenAI" },
+                        { value: "xai", label: "xAI" },
+                      ]}
+                    />
+
+                    <Input
+                      label="API key"
+                      value={byokKey}
+                      onChange={setByokKey}
+                      placeholder="Paste API key…"
+                      type="password"
+                    />
+
+                    <div className="flex items-center gap-3">
+                      <Button disabled={byokBusy || !byokKey.trim()} onClick={saveByokKey}>
+                        {byokBusy ? "Saving…" : "Save key"}
+                      </Button>
+                      <div className="text-xs text-white/55">
+                        Stored server-side (never displayed again after save).
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+              </>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

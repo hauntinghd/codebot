@@ -1,0 +1,33 @@
+# Core FastAPI dependencies
+fastapi>=0.128.0
+uvicorn[standard]>=0.40.0
+python-multipart>=0.0.9
+
+# Authentication & Security
+authlib>=1.2.1
+itsdangerous>=2.1.2
+cryptography>=46.0.0
+
+# OpenAI API
+openai>=2.14.0
+
+# Stripe payments
+stripe>=14.1.0
+
+# HTTP client for external APIs (Netlify, etc.)
+httpx>=0.27.0
+
+# Data validation
+pydantic>=2.12.0
+
+# Starlette (FastAPI dependency)
+starlette>=0.41.0
+
+# Monitoring
+prometheus_client>=0.20.0
+
+# Environment
+python-dotenv>=1.0.0
+
+# JWT
+PyJWT>=2.8.0

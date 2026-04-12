@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{STORE_NAME}}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '{{PRIMARY_COLOR}}',
+                        secondary: '{{SECONDARY_COLOR}}',
+                        accent: '{{ACCENT_COLOR}}'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        [x-cloak] { display: none !important; }
+        .product-card { transition: all 0.3s ease; }
+        .product-card:hover { transform: translateY(-8px); box-shadow: 0 20px 40px rgba(0,0,0,0.1); }
+        .btn-primary { background: linear-gradient(135deg, var(--tw-gradient-from), var(--tw-gradient-to)); }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen" x-data="store()">
+    <!-- Announcement Bar -->
+    <div class="bg-primary text-white text-center py-2 text-sm font-medium">
+        {{ANNOUNCEMENT}}
+    </div>
+
+    <!-- Header -->
+    <header class="bg-white shadow-sm sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <!-- Logo -->
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-secondary flex items-center justify-center">
+                        <i class="{{LOGO_ICON}} text-white text-lg"></i>
+                    </div>
+                    <span class="text-xl font-bold text-gray-900">{{STORE_NAME}}</span>
+                </div>
+
+                <!-- Navigation -->
+                <nav class="hidden md:flex items-center gap-8">
+                    <a href="#" class="text-gray-600 hover:text-primary transition-colors">Home</a>
+                    <a href="#products" class="text-gray-600 hover:text-primary transition-colors">Shop</a>
+                    <a href="#blog" class="text-gray-600 hover:text-primary transition-colors">Blog</a>
+                    <a href="#reviews" class="text-gray-600 hover:text-primary transition-colors">Reviews</a>
+                    <a href="#contact" class="text-gray-600 hover:text-primary transition-colors">Contact</a>
+                </nav>
+
+                <!-- Icons -->
+                <div class="flex items-center gap-4">
+                    <button class="relative p-2 text-gray-600 hover:text-primary transition-colors">
+                        <i class="fas fa-search text-lg"></i>
+                    </button>
+                    <button @click="wishlistOpen = true" class="relative p-2 text-gray-600 hover:text-primary transition-colors">
+                        <i class="fas fa-heart text-lg"></i>
+                        <span x-show="wishlist.length > 0" class="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center" x-text="wishlist.length"></span>
+                    </button>
+                    <button @click="cartOpen = true" class="relative p-2 text-gray-600 hover:text-primary transition-colors">
+                        <i class="fas fa-shopping-bag text-lg"></i>
+                        <span x-show="cart.length > 0" class="absolute -top-1 -right-1 w-5 h-5 bg-primary text-white text-xs rounded-full flex items-center justify-center" x-text="cartCount"></span>
+                    </button>
+                    <button class="p-2 text-gray-600 hover:text-primary transition-colors">
+                        <i class="fas fa-user text-lg"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Hero Section -->
+    <section class="relative bg-gradient-to-br from-primary/10 via-secondary/5 to-accent/10 py-20 lg:py-32">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="grid lg:grid-cols-2 gap-12 items-center">
+                <div class="space-y-8">
+                    <h1 class="text-4xl lg:text-6xl font-bold text-gray-900 leading-tight">
+                        {{HERO_TITLE}}
+                    </h1>
+                    <p class="text-xl text-gray-600">
+                        {{HERO_SUBTITLE}}
+                    </p>
+                    <div class="flex flex-wrap gap-4">
+                        <a href="#products" class="px-8 py-4 bg-gradient-to-r from-primary to-secondary text-white font-semibold rounded-full hover:shadow-lg hover:scale-105 transition-all">
+                            Shop Now <i class="fas fa-arrow-right ml-2"></i>
+                        </a>
+                        <a href="#about" class="px-8 py-4 border-2 border-gray-300 text-gray-700 font-semibold rounded-full hover:border-primary hover:text-primary transition-all">
+                            Learn More
+                        </a>
+                    </div>
+                    <div class="flex items-center gap-8 pt-4">
+                        <div class="text-center">
+                            <div class="text-3xl font-bold text-primary">{{STAT_1_NUMBER}}</div>
+                            <div class="text-sm text-gray-500">{{STAT_1_LABEL}}</div>
+                        </div>
+                        <div class="text-center">
+                            <div class="text-3xl font-bold text-primary">{{STAT_2_NUMBER}}</div>
+                            <div class="text-sm text-gray-500">{{STAT_2_LABEL}}</div>
+                        </div>
+                        <div class="text-center">
+                            <div class="text-3xl font-bold text-primary">{{STAT_3_NUMBER}}</div>
+                            <div class="text-sm text-gray-500">{{STAT_3_LABEL}}</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="relative">
+                    <img src="{{HERO_IMAGE}}" alt="Hero" class="rounded-3xl shadow-2xl w-full object-cover">
+                    <div class="absolute -bottom-6 -left-6 bg-white rounded-2xl shadow-xl p-4 flex items-center gap-3">
+                        <div class="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
+                            <i class="fas fa-check text-green-500 text-xl"></i>
+                        </div>
+                        <div>
+                            <div class="font-semibold text-gray-900">Free Shipping</div>
+                            <div class="text-sm text-gray-500">On orders over $50</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Products Section -->
+    <section id="products" class="py-20 bg-white">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center mb-12">
+                <h2 class="text-3xl lg:text-4xl font-bold text-gray-900 mb-4">{{PRODUCTS_TITLE}}</h2>
+                <p class="text-lg text-gray-600 max-w-2xl mx-auto">{{PRODUCTS_SUBTITLE}}</p>
+            </div>
+            
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+                <template x-for="product in products" :key="product.id">
+                    <div class="product-card bg-white rounded-2xl overflow-hidden shadow-md border border-gray-100">
+                        <div class="relative group">
+                            <img :src="product.image" :alt="product.name" class="w-full h-64 object-cover">
+                            <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
+                                <button @click="addToCart(product)" class="w-12 h-12 bg-white rounded-full flex items-center justify-center hover:bg-primary hover:text-white transition-all">
+                                    <i class="fas fa-shopping-bag"></i>
+                                </button>
+                                <button @click="toggleWishlist(product)" class="w-12 h-12 bg-white rounded-full flex items-center justify-center hover:bg-red-500 hover:text-white transition-all">
+                                    <i class="fas fa-heart"></i>
+                                </button>
+                                <button class="w-12 h-12 bg-white rounded-full flex items-center justify-center hover:bg-primary hover:text-white transition-all">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                            </div>
+                            <span x-show="product.badge" class="absolute top-4 left-4 px-3 py-1 bg-primary text-white text-xs font-semibold rounded-full" x-text="product.badge"></span>
+                        </div>
+                        <div class="p-5">
+                            <div class="text-sm text-gray-500 mb-1" x-text="product.category"></div>
+                            <h3 class="font-semibold text-gray-900 mb-2" x-text="product.name"></h3>
+                            <div class="flex items-center gap-1 mb-3">
+                                <template x-for="i in 5">
+                                    <i class="fas fa-star text-sm" :class="i <= product.rating ? 'text-yellow-400' : 'text-gray-200'"></i>
+                                </template>
+                                <span class="text-sm text-gray-500 ml-1" x-text="'(' + product.reviews + ')'"></span>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-xl font-bold text-primary" x-text="'$' + product.price.toFixed(2)"></span>
+                                    <span x-show="product.originalPrice" class="text-sm text-gray-400 line-through" x-text="'$' + product.originalPrice?.toFixed(2)"></span>
+                                </div>
+                                <button @click="addToCart(product)" class="px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-secondary transition-colors">
+                                    Add
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section class="py-16 bg-gray-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-8">
+                <div class="flex items-center gap-4 p-6 bg-white rounded-2xl shadow-sm">
+                    <div class="w-14 h-14 bg-primary/10 rounded-xl flex items-center justify-center">
+                        <i class="fas fa-truck text-primary text-xl"></i>
+                    </div>
+                    <div>
+                        <div class="font-semibold text-gray-900">Free Shipping</div>
+                        <div class="text-sm text-gray-500">On orders over $50</div>
+                    </div>
+                </div>
+                <div class="flex items-center gap-4 p-6 bg-white rounded-2xl shadow-sm">
+                    <div class="w-14 h-14 bg-primary/10 rounded-xl flex items-center justify-center">
+                        <i class="fas fa-undo text-primary text-xl"></i>
+                    </div>
+                    <div>
+                        <div class="font-semibold text-gray-900">Easy Returns</div>
+                        <div class="text-sm text-gray-500">30-day return policy</div>
+                    </div>
+                </div>
+                <div class="flex items-center gap-4 p-6 bg-white rounded-2xl shadow-sm">
+                    <div class="w-14 h-14 bg-primary/10 rounded-xl flex items-center justify-center">
+                        <i class="fas fa-shield-alt text-primary text-xl"></i>
+                    </div>
+                    <div>
+                        <div class="font-semibold text-gray-900">Secure Payment</div>
+                        <div class="text-sm text-gray-500">100% protected</div>
+                    </div>
+                </div>
+                <div class="flex items-center gap-4 p-6 bg-white rounded-2xl shadow-sm">
+                    <div class="w-14 h-14 bg-primary/10 rounded-xl flex items-center justify-center">
+                        <i class="fas fa-headset text-primary text-xl"></i>
+                    </div>
+                    <div>
+                        <div class="font-semibold text-gray-900">24/7 Support</div>
+                        <div class="text-sm text-gray-500">Dedicated help</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Reviews Section -->
+    <section id="reviews" class="py-20 bg-white">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center mb-12">
+                <h2 class="text-3xl lg:text-4xl font-bold text-gray-900 mb-4">What Our Customers Say</h2>
+                <p class="text-lg text-gray-600">Real reviews from real customers</p>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <template x-for="review in reviews" :key="review.id">
+                    <div class="bg-gray-50 rounded-2xl p-8">
+                        <div class="flex items-center gap-1 mb-4">
+                            <template x-for="i in 5">
+                                <i class="fas fa-star" :class="i <= review.rating ? 'text-yellow-400' : 'text-gray-200'"></i>
+                            </template>
+                        </div>
+                        <p class="text-gray-600 mb-6" x-text="review.text"></p>
+                        <div class="flex items-center gap-4">
+                            <img :src="review.avatar" :alt="review.name" class="w-12 h-12 rounded-full object-cover">
+                            <div>
+                                <div class="font-semibold text-gray-900" x-text="review.name"></div>
+                                <div class="text-sm text-gray-500" x-text="review.date"></div>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </section>
+
+    <!-- Blog Section -->
+    <section id="blog" class="py-20 bg-gray-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center mb-12">
+                <h2 class="text-3xl lg:text-4xl font-bold text-gray-900 mb-4">From Our Blog</h2>
+                <p class="text-lg text-gray-600">Tips, stories, and inspiration</p>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <template x-for="post in blogPosts" :key="post.id">
+                    <article class="bg-white rounded-2xl overflow-hidden shadow-md hover:shadow-xl transition-shadow">
+                        <img :src="post.image" :alt="post.title" class="w-full h-48 object-cover">
+                        <div class="p-6">
+                            <div class="text-sm text-primary font-medium mb-2" x-text="post.category"></div>
+                            <h3 class="text-xl font-semibold text-gray-900 mb-3" x-text="post.title"></h3>
+                            <p class="text-gray-600 mb-4" x-text="post.excerpt"></p>
+                            <a href="#" class="text-primary font-medium hover:underline">Read More →</a>
+                        </div>
+                    </article>
+                </template>
+            </div>
+        </div>
+    </section>
+
+    <!-- Newsletter -->
+    <section class="py-16 bg-gradient-to-r from-primary to-secondary">
+        <div class="max-w-4xl mx-auto px-4 text-center">
+            <h2 class="text-3xl font-bold text-white mb-4">Join Our Newsletter</h2>
+            <p class="text-white/80 mb-8">Get 10% off your first order and stay updated with new arrivals!</p>
+            <form class="flex flex-col sm:flex-row gap-4 max-w-md mx-auto">
+                <input type="email" placeholder="Enter your email" class="flex-1 px-6 py-4 rounded-full focus:outline-none focus:ring-2 focus:ring-white">
+                <button type="submit" class="px-8 py-4 bg-white text-primary font-semibold rounded-full hover:bg-gray-100 transition-colors">
+                    Subscribe
+                </button>
+            </form>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="bg-gray-900 text-gray-400 py-16">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-8 mb-12">
+                <div>
+                    <div class="flex items-center gap-3 mb-6">
+                        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-secondary flex items-center justify-center">
+                            <i class="{{LOGO_ICON}} text-white text-lg"></i>
+                        </div>
+                        <span class="text-xl font-bold text-white">{{STORE_NAME}}</span>
+                    </div>
+                    <p class="mb-6">{{FOOTER_DESCRIPTION}}</p>
+                    <div class="flex gap-4">
+                        <a href="#" class="w-10 h-10 bg-gray-800 rounded-full flex items-center justify-center hover:bg-primary transition-colors">
+                            <i class="fab fa-facebook-f"></i>
+                        </a>
+                        <a href="#" class="w-10 h-10 bg-gray-800 rounded-full flex items-center justify-center hover:bg-primary transition-colors">
+                            <i class="fab fa-instagram"></i>
+                        </a>
+                        <a href="#" class="w-10 h-10 bg-gray-800 rounded-full flex items-center justify-center hover:bg-primary transition-colors">
+                            <i class="fab fa-twitter"></i>
+                        </a>
+                        <a href="#" class="w-10 h-10 bg-gray-800 rounded-full flex items-center justify-center hover:bg-primary transition-colors">
+                            <i class="fab fa-tiktok"></i>
+                        </a>
+                    </div>
+                </div>
+                <div>
+                    <h4 class="text-white font-semibold mb-4">Quick Links</h4>
+                    <ul class="space-y-3">
+                        <li><a href="#" class="hover:text-white transition-colors">Shop All</a></li>
+                        <li><a href="#" class="hover:text-white transition-colors">New Arrivals</a></li>
+                        <li><a href="#" class="hover:text-white transition-colors">Best Sellers</a></li>
+                        <li><a href="#" class="hover:text-white transition-colors">Sale</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <h4 class="text-white font-semibold mb-4">Customer Service</h4>
+                    <ul class="space-y-3">
+                        <li><a href="#" class="hover:text-white transition-colors">Contact Us</a></li>
+                        <li><a href="#" class="hover:text-white transition-colors">Shipping Info</a></li>
+                        <li><a href="#" class="hover:text-white transition-colors">Returns</a></li>
+                        <li><a href="#" class="hover:text-white transition-colors">FAQ</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <h4 class="text-white font-semibold mb-4">Contact</h4>
+                    <ul class="space-y-3">
+                        <li class="flex items-center gap-3">
+                            <i class="fas fa-envelope"></i>
+                            <span>hello@{{STORE_DOMAIN}}</span>
+                        </li>
+                        <li class="flex items-center gap-3">
+                            <i class="fas fa-phone"></i>
+                            <span>{{PHONE}}</span>
+                        </li>
+                        <li class="flex items-center gap-3">
+                            <i class="fas fa-map-marker-alt"></i>
+                            <span>{{ADDRESS}}</span>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+            <div class="border-t border-gray-800 pt-8 flex flex-col md:flex-row items-center justify-between gap-4">
+                <p>© 2026 {{STORE_NAME}}. All rights reserved.</p>
+                <div class="flex items-center gap-4">
+                    <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/b/b5/PayPal.svg/124px-PayPal.svg.png" alt="PayPal" class="h-6">
+                    <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/5/5e/Visa_Inc._logo.svg/200px-Visa_Inc._logo.svg.png" alt="Visa" class="h-4">
+                    <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/2a/Mastercard-logo.svg/200px-Mastercard-logo.svg.png" alt="Mastercard" class="h-6">
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Cart Drawer -->
+    <div x-show="cartOpen" x-cloak class="fixed inset-0 z-50" @click.self="cartOpen = false">
+        <div class="absolute inset-0 bg-black/50"></div>
+        <div class="absolute right-0 top-0 h-full w-full max-w-md bg-white shadow-2xl" 
+             x-show="cartOpen" 
+             x-transition:enter="transform transition-transform duration-300"
+             x-transition:enter-start="translate-x-full"
+             x-transition:enter-end="translate-x-0"
+             x-transition:leave="transform transition-transform duration-300"
+             x-transition:leave-start="translate-x-0"
+             x-transition:leave-end="translate-x-full">
+            <div class="flex flex-col h-full">
+                <div class="flex items-center justify-between p-6 border-b">
+                    <h2 class="text-xl font-bold">Shopping Cart (<span x-text="cartCount"></span>)</h2>
+                    <button @click="cartOpen = false" class="p-2 hover:bg-gray-100 rounded-full">
+                        <i class="fas fa-times text-xl"></i>
+                    </button>
+                </div>
+                <div class="flex-1 overflow-y-auto p-6">
+                    <template x-if="cart.length === 0">
+                        <div class="text-center py-12">
+                            <i class="fas fa-shopping-bag text-6xl text-gray-200 mb-4"></i>
+                            <p class="text-gray-500">Your cart is empty</p>
+                        </div>
+                    </template>
+                    <template x-for="item in cart" :key="item.id">
+                        <div class="flex gap-4 mb-6 pb-6 border-b">
+                            <img :src="item.image" :alt="item.name" class="w-20 h-20 rounded-lg object-cover">
+                            <div class="flex-1">
+                                <h3 class="font-semibold text-gray-900" x-text="item.name"></h3>
+                                <p class="text-primary font-medium" x-text="'$' + item.price.toFixed(2)"></p>
+                                <div class="flex items-center gap-3 mt-2">
+                                    <button @click="updateQty(item.id, -1)" class="w-8 h-8 rounded-full border hover:bg-gray-100">-</button>
+                                    <span x-text="item.qty"></span>
+                                    <button @click="updateQty(item.id, 1)" class="w-8 h-8 rounded-full border hover:bg-gray-100">+</button>
+                                </div>
+                            </div>
+                            <button @click="removeFromCart(item.id)" class="text-gray-400 hover:text-red-500">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                    </template>
+                </div>
+                <div class="p-6 border-t bg-gray-50">
+                    <div class="flex justify-between mb-4">
+                        <span class="text-gray-600">Subtotal</span>
+                        <span class="text-xl font-bold" x-text="'$' + cartTotal.toFixed(2)"></span>
+                    </div>
+                    <button @click="checkout()" class="w-full py-4 bg-gradient-to-r from-primary to-secondary text-white font-semibold rounded-xl hover:shadow-lg transition-all flex items-center justify-center gap-2">
+                        <i class="fab fa-paypal"></i>
+                        Checkout with PayPal
+                    </button>
+                    <p class="text-center text-sm text-gray-500 mt-4">Secure checkout powered by PayPal</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div x-show="toast.show" x-cloak
+         x-transition:enter="transform transition-all duration-300"
+         x-transition:enter-start="translate-y-full opacity-0"
+         x-transition:enter-end="translate-y-0 opacity-100"
+         x-transition:leave="transform transition-all duration-300"
+         x-transition:leave-start="translate-y-0 opacity-100"
+         x-transition:leave-end="translate-y-full opacity-0"
+         class="fixed bottom-6 right-6 bg-gray-900 text-white px-6 py-4 rounded-xl shadow-2xl flex items-center gap-3 z-50">
+        <i class="fas fa-check-circle text-green-400"></i>
+        <span x-text="toast.message"></span>
+    </div>
+
+    <script>
+        function store() {
+            return {
+                cartOpen: false,
+                wishlistOpen: false,
+                cart: [],
+                wishlist: [],
+                toast: { show: false, message: '' },
+                // Ensure valid JS: inject as JSON.parse('...')
+                products: JSON.parse(`{{PRODUCTS_JSON|escapejs|default:'[]'}}`),
+                reviews: JSON.parse(`{{REVIEWS_JSON|escapejs|default:'[]'}}`),
+                blogPosts: JSON.parse(`{{BLOG_JSON|escapejs|default:'[]'}}`),
+                get cartCount() {
+                    return this.cart.reduce((sum, item) => sum + item.qty, 0);
+                },
+                get cartTotal() {
+                    return this.cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
+                },
+                addToCart(product) {
+                    const existing = this.cart.find(item => item.id === product.id);
+                    if (existing) {
+                        existing.qty++;
+                    } else {
+                        this.cart.push({ ...product, qty: 1 });
+                    }
+                    this.showToast('Added to cart!');
+                },
+                removeFromCart(id) {
+                    this.cart = this.cart.filter(item => item.id !== id);
+                },
+                updateQty(id, delta) {
+                    const item = this.cart.find(item => item.id === id);
+                    if (item) {
+                        item.qty += delta;
+                        if (item.qty <= 0) this.removeFromCart(id);
+                    }
+                },
+                toggleWishlist(product) {
+                    const idx = this.wishlist.findIndex(item => item.id === product.id);
+                    if (idx >= 0) {
+                        this.wishlist.splice(idx, 1);
+                        this.showToast('Removed from wishlist');
+                    } else {
+                        this.wishlist.push(product);
+                        this.showToast('Added to wishlist!');
+                    }
+                },
+                checkout() {
+                    // PayPal integration would go here
+                    alert('Redirecting to PayPal checkout...\n\nTotal: $' + this.cartTotal.toFixed(2));
+                },
+                showToast(message) {
+                    this.toast = { show: true, message };
+                    setTimeout(() => { this.toast.show = false; }, 3000);
+                }
+            }
+        }
+    </script>
+</body>
+</html>
