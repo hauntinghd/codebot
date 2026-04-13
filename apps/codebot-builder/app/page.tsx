@@ -7,9 +7,9 @@ export default function RootPage() {
     // If user has a token, go to dashboard. Otherwise go to login.
     const token = localStorage.getItem("access_token") || localStorage.getItem("codebot_access_token");
     if (token) {
-      window.location.replace("/codebot/dashboard");
+      window.location.replace("/codebot/dashboard/");
     } else {
-      window.location.replace("/codebot/login");
+      window.location.replace("/codebot/login/");
     }
   }, []);
 

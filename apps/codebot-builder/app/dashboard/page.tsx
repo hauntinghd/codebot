@@ -1,330 +1,340 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
-import Link from "next/link";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { apiFetch, getToken, clearTokens } from "../lib/api";
 
 const BASE = "/codebot";
 
-type UserInfo = {
-  id: string;
-  email: string;
-  is_admin: boolean;
-  plan?: string;
-  subscription_status?: string;
-  credits_remaining?: number;
-};
+type UserInfo = { id: string; email: string; is_admin: boolean; plan?: string; credits_remaining?: number };
+
+const MODELS = [
+  { id: "claude-opus-4-6",   label: "Claude Opus 4.6",   tier: "frontier" },
+  { id: "gpt-5",             label: "GPT-5",              tier: "frontier" },
+  { id: "claude-sonnet-4.5", label: "Claude Sonnet 4.5",  tier: "premium"  },
+  { id: "gpt-4.1",           label: "GPT-4.1",            tier: "premium"  },
+  { id: "deepseek-v3.1",     label: "DeepSeek V3.1",      tier: "premium"  },
+  { id: "gemini-2.5-flash",  label: "Gemini Flash",       tier: "fast"     },
+  { id: "claude-haiku-4.5",  label: "Claude Haiku 4.5",   tier: "fast"     },
+];
+
+const TIER_COLORS: Record<string, string> = { frontier: "#c084fc", premium: "#60a5fa", fast: "#86efac" };
 
 export default function DashboardPage() {
   const [user, setUser] = useState<UserInfo | null>(null);
   const [loading, setLoading] = useState(true);
+  const [prompt, setPrompt] = useState("");
+  const [selectedModel, setSelectedModel] = useState("claude-sonnet-4.5");
+  const [modelOpen, setModelOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const modelRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const load = useCallback(async () => {
-    setLoading(true);
     const token = getToken();
-    if (!token) {
-      window.location.assign(`${BASE}/login`);
-      return;
-    }
+    if (!token) { window.location.assign(`${BASE}/login`); return; }
     try {
       const data = await apiFetch<UserInfo>("/me");
       setUser(data);
-    } catch {
-      clearTokens();
-      window.location.assign(`${BASE}/login`);
-    } finally {
-      setLoading(false);
-    }
+    } catch { clearTokens(); window.location.assign(`${BASE}/login`); }
+    finally { setLoading(false); }
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
-  const logout = () => {
-    clearTokens();
-    window.location.assign(`${BASE}/login`);
+  // Close dropdowns on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (modelRef.current && !modelRef.current.contains(e.target as Node)) setModelOpen(false);
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const logout = () => { clearTokens(); window.location.assign(`${BASE}/login`); };
+
+  const goBuilder = (mode: "build" | "plan") => {
+    const params = new URLSearchParams({ prompt, model: selectedModel, mode });
+    window.location.assign(`${BASE}/builder/?${params.toString()}`);
   };
 
-  if (loading || !user) {
-    return (
-      <div className="dash-page">
-        <div className="dash-loading">
-          <div className="dash-spinner" />
-        </div>
-        <style>{STYLES}</style>
-      </div>
-    );
-  }
+  const currentModel = MODELS.find(m => m.id === selectedModel) || MODELS[2];
 
-  const plan = user.plan || "none";
-  const isAdmin = user.is_admin;
-  const initials = (user.email?.split("@")[0]?.[0] || "U").toUpperCase();
+  if (loading) return (
+    <div className="d-page"><div className="d-load"><div className="d-spin" /></div><style>{CSS}</style></div>
+  );
 
   return (
-    <div className="dash-page">
-      <div className="dash-bg-mesh" />
+    <div className="d-page">
+      <div className="d-bg" />
 
-      {/* Top Bar */}
-      <header className="dash-header">
-        <div className="dash-header-left">
-          <div className="dash-logo">
-            <span className="dash-logo-dot" />
-            CodeBot
+      {/* Top bar */}
+      <header className="d-top">
+        <div className="d-logo"><span className="d-dot" />CodeBot</div>
+        <div className="d-top-right">
+          <button className="d-signout" onClick={logout}>Sign Out</button>
+          <div className="d-menu-wrap" ref={menuRef}>
+            <button className="d-hamburger" onClick={() => setMenuOpen(v => !v)}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+            </button>
+            {menuOpen && (
+              <div className="d-dropdown d-dropdown-menu">
+                {[
+                  { href: `${BASE}/account/`, label: "Account" },
+                  { href: `${BASE}/account/upgrade/`, label: "Upgrade / Billing" },
+                  { href: `${BASE}/settings/`, label: "Settings" },
+                  { href: `${BASE}/terms/`, label: "Terms of Service" },
+                ].map(item => (
+                  <a key={item.href} href={item.href} className="d-drop-item">{item.label}</a>
+                ))}
+              </div>
+            )}
           </div>
-        </div>
-        <div className="dash-header-right">
-          <button className="dash-btn-signout" onClick={logout}>
-            Sign Out
-          </button>
         </div>
       </header>
 
       {/* Hero */}
-      <section className="dash-hero">
-        <div className="dash-hero-text">
-          <h1>Welcome back{user.email ? `, ${user.email.split("@")[0]}` : ""}</h1>
-          <p>Build, deploy, and manage your projects.</p>
-        </div>
-        <div className="dash-hero-badges">
-          {isAdmin && <span className="badge badge-admin">Admin</span>}
-          <span className={`badge badge-plan ${plan !== "none" ? "badge-active" : ""}`}>
-            {plan === "none" ? "No Plan" : plan.charAt(0).toUpperCase() + plan.slice(1)}
-          </span>
-          <span className="badge badge-status">Authenticated</span>
-        </div>
-      </section>
+      <div className="d-hero">
+        <h1 className="d-headline">
+          What will you <em>build</em> today?
+        </h1>
+        <p className="d-sub">
+          Prompt, preview, and deploy full-stack apps with AI.
+        </p>
+      </div>
 
-      {/* Stats */}
-      <section className="dash-stats">
-        <div className="stat-card">
-          <div className="stat-icon">
-            <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+      {/* Prompt box */}
+      <div className="d-prompt-wrap">
+        <div className="d-prompt-card">
+          <textarea
+            ref={inputRef}
+            className="d-textarea"
+            placeholder="Describe what you want to build..."
+            value={prompt}
+            onChange={e => setPrompt(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && prompt.trim()) { e.preventDefault(); goBuilder("build"); } }}
+            rows={3}
+          />
+          <div className="d-prompt-bar">
+            {/* Model picker */}
+            <div className="d-model-wrap" ref={modelRef}>
+              <button className="d-model-btn" onClick={() => setModelOpen(v => !v)}>
+                <span className="d-tier-dot" style={{ background: TIER_COLORS[currentModel.tier] }} />
+                {currentModel.label}
+                <span className="d-caret">&#9662;</span>
+              </button>
+              {modelOpen && (
+                <div className="d-dropdown d-dropdown-model">
+                  {(["frontier", "premium", "fast"] as const).map(tier => (
+                    <div key={tier}>
+                      <div className="d-drop-header" style={{ color: TIER_COLORS[tier] }}>{tier.toUpperCase()}</div>
+                      {MODELS.filter(m => m.tier === tier).map(m => (
+                        <button key={m.id} className={`d-drop-item ${m.id === selectedModel ? "active" : ""}`}
+                          onClick={() => { setSelectedModel(m.id); setModelOpen(false); }}>
+                          {m.label}
+                          {m.id === selectedModel && <span className="d-check">&#10003;</span>}
+                        </button>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Plan button */}
+            <button className="d-plan-btn" onClick={() => prompt.trim() && goBuilder("plan")}>
+              Plan
+            </button>
+
+            {/* Build button */}
+            <button className="d-build-btn" onClick={() => prompt.trim() && goBuilder("build")} disabled={!prompt.trim()}>
+              Build now &#9654;
+            </button>
           </div>
-          <div className="stat-value">{isAdmin ? "Unlimited" : plan === "none" ? "0" : user.credits_remaining ?? "—"}</div>
-          <div className="stat-label">CBT Balance</div>
         </div>
-        <div className="stat-card">
-          <div className="stat-icon purple">
-            <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+      </div>
+
+      {/* Quick stats */}
+      {user && (
+        <div className="d-stats-row">
+          <div className="d-stat">
+            <span className="d-stat-val">{user.is_admin ? "Unlimited" : user.credits_remaining ?? 0}</span>
+            <span className="d-stat-label">CBT Balance</span>
           </div>
-          <div className="stat-value">38</div>
-          <div className="stat-label">AI Models</div>
+          <div className="d-stat">
+            <span className="d-stat-val">38</span>
+            <span className="d-stat-label">AI Models</span>
+          </div>
+          <div className="d-stat">
+            <span className="d-stat-val">{user.plan === "none" ? "Free" : user.plan || "Free"}</span>
+            <span className="d-stat-label">Plan</span>
+          </div>
         </div>
-        <div className="stat-card">
-          <div className="stat-icon green">
-            <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-          </div>
-          <div className="stat-value">5</div>
-          <div className="stat-label">Audit Layers</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-icon cyan">
-            <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
-          </div>
-          <div className="stat-value">11</div>
-          <div className="stat-label">Categories</div>
-        </div>
-      </section>
+      )}
 
-      {/* Action Grid */}
-      <section className="dash-grid">
-        <Link href={`${BASE}/builder`} className="action-card action-primary">
-          <div className="action-icon">
-            <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
-          </div>
-          <div className="action-content">
-            <h3>Start Building</h3>
-            <p>Launch the AI code builder with 38 frontier models</p>
-          </div>
-          <span className="action-arrow">&rarr;</span>
-        </Link>
-
-        <Link href={`${BASE}/account`} className="action-card">
-          <div className="action-icon">
-            <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
-          </div>
-          <div className="action-content">
-            <h3>Account</h3>
-            <p>Manage your profile and API keys</p>
-          </div>
-          <span className="action-arrow">&rarr;</span>
-        </Link>
-
-        <Link href={`${BASE}/account/upgrade`} className="action-card">
-          <div className="action-icon">
-            <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-          </div>
-          <div className="action-content">
-            <h3>Upgrade Plan</h3>
-            <p>{plan === "none" ? "Choose a plan to start building" : "Manage your subscription"}</p>
-          </div>
-          <span className="action-arrow">&rarr;</span>
-        </Link>
-
-        <Link href={`${BASE}/settings`} className="action-card">
-          <div className="action-icon">
-            <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
-          </div>
-          <div className="action-content">
-            <h3>Settings</h3>
-            <p>Configure models, API keys, and preferences</p>
-          </div>
-          <span className="action-arrow">&rarr;</span>
-        </Link>
-      </section>
-
-      <style>{STYLES}</style>
+      <style>{CSS}</style>
     </div>
   );
 }
 
-const STYLES = `
+const CSS = `
   * { box-sizing: border-box; margin: 0; padding: 0; }
   a { text-decoration: none; color: inherit; }
 
-  .dash-page {
-    min-height: 100vh;
-    background: #050a12;
-    color: white;
+  .d-page {
+    min-height: 100vh; background: #050a12; color: #fff;
     font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
-    padding: 0 24px 60px;
-    position: relative;
-    overflow: hidden;
+    display: flex; flex-direction: column; align-items: center;
+    position: relative; overflow: hidden;
   }
-  .dash-bg-mesh {
+  .d-bg {
     position: absolute; inset: 0; z-index: 0; pointer-events: none;
-    background:
-      radial-gradient(ellipse 80% 50% at 20% 20%, rgba(99,102,241,0.06), transparent),
-      radial-gradient(ellipse 60% 40% at 80% 80%, rgba(6,182,212,0.04), transparent);
+    background: radial-gradient(ellipse 70% 50% at 50% 30%, rgba(99,102,241,0.06), transparent),
+                radial-gradient(ellipse 50% 40% at 80% 80%, rgba(6,182,212,0.04), transparent);
   }
-  .dash-loading {
-    min-height: 100vh; display: flex; align-items: center; justify-content: center;
-  }
-  .dash-spinner {
-    width: 32px; height: 32px;
-    border: 3px solid rgba(255,255,255,0.1);
-    border-top-color: rgba(99,102,241,0.8);
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
+  .d-load { min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+  .d-spin {
+    width: 28px; height: 28px; border: 3px solid rgba(255,255,255,0.1);
+    border-top-color: #818cf8; border-radius: 50%; animation: spin 0.7s linear infinite;
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  .dash-header {
-    position: relative; z-index: 10;
+  /* Top bar */
+  .d-top {
+    position: relative; z-index: 10; width: 100%; max-width: 900px;
     display: flex; align-items: center; justify-content: space-between;
-    max-width: 1100px; margin: 0 auto;
-    padding: 20px 0;
+    padding: 20px 24px;
   }
-  .dash-logo {
+  .d-logo {
     display: flex; align-items: center; gap: 8px;
-    font-size: 15px; font-weight: 600; color: #a5b4fc;
-    padding: 6px 14px; border-radius: 100px;
+    font-size: 14px; font-weight: 600; color: #a5b4fc;
+    padding: 5px 12px; border-radius: 100px;
     background: rgba(99,102,241,0.08); border: 1px solid rgba(99,102,241,0.15);
   }
-  .dash-logo-dot {
-    width: 6px; height: 6px; border-radius: 50%; background: #818cf8;
-    box-shadow: 0 0 8px rgba(129,140,248,0.5);
+  .d-dot { width: 6px; height: 6px; border-radius: 50%; background: #818cf8; }
+  .d-top-right { display: flex; align-items: center; gap: 8px; }
+  .d-signout {
+    height: 36px; padding: 0 16px; border-radius: 8px;
+    border: 1px solid rgba(239,68,68,0.25); background: rgba(239,68,68,0.06);
+    color: #fca5a5; font-size: 13px; font-weight: 500; cursor: pointer; font-family: inherit;
   }
-  .dash-header-right { display: flex; gap: 10px; align-items: center; }
-  .dash-btn-signout {
-    height: 40px; padding: 0 20px; border-radius: 10px; border: 1px solid rgba(239,68,68,0.3);
-    background: rgba(239,68,68,0.08); color: #fca5a5;
-    font-size: 14px; font-weight: 500; cursor: pointer; font-family: inherit;
+  .d-signout:hover { background: rgba(239,68,68,0.12); }
+  .d-hamburger {
+    width: 36px; height: 36px; border-radius: 8px; border: none;
+    background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.7);
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+  }
+  .d-hamburger:hover { background: rgba(255,255,255,0.1); }
+  .d-menu-wrap { position: relative; }
+
+  /* Hero */
+  .d-hero {
+    position: relative; z-index: 1; text-align: center;
+    margin-top: 60px; padding: 0 24px;
+  }
+  .d-headline {
+    font-size: 42px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.15;
+    color: #f1f5f9;
+  }
+  .d-headline em {
+    font-style: italic;
+    background: linear-gradient(135deg, #818cf8, #06b6d4);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+  }
+  .d-sub { margin-top: 12px; font-size: 16px; color: rgba(148,163,184,0.65); }
+
+  /* Prompt */
+  .d-prompt-wrap {
+    position: relative; z-index: 1; width: 100%; max-width: 680px;
+    margin-top: 40px; padding: 0 24px;
+  }
+  .d-prompt-card {
+    border-radius: 16px; border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(15,23,42,0.6); backdrop-filter: blur(20px);
+    overflow: hidden;
+  }
+  .d-textarea {
+    width: 100%; padding: 20px; border: none; background: transparent;
+    color: #e2e8f0; font-size: 15px; font-family: inherit; resize: none;
+    outline: none; min-height: 80px;
+  }
+  .d-textarea::placeholder { color: rgba(148,163,184,0.35); }
+
+  .d-prompt-bar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 12px 16px; border-top: 1px solid rgba(255,255,255,0.05);
+  }
+
+  /* Model picker */
+  .d-model-wrap { position: relative; }
+  .d-model-btn {
+    display: flex; align-items: center; gap: 6px;
+    height: 34px; padding: 0 12px; border-radius: 8px; border: none;
+    background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.8);
+    font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit;
+    white-space: nowrap;
+  }
+  .d-model-btn:hover { background: rgba(255,255,255,0.1); }
+  .d-tier-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .d-caret { font-size: 8px; opacity: 0.5; margin-left: 2px; }
+
+  /* Plan button */
+  .d-plan-btn {
+    height: 34px; padding: 0 14px; border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.1); background: transparent;
+    color: rgba(255,255,255,0.7); font-size: 13px; font-weight: 500;
+    cursor: pointer; font-family: inherit; margin-left: auto;
+  }
+  .d-plan-btn:hover { background: rgba(255,255,255,0.06); }
+
+  /* Build button */
+  .d-build-btn {
+    height: 38px; padding: 0 22px; border-radius: 10px; border: none;
+    background: linear-gradient(135deg, #2563eb, #1d4ed8); color: white;
+    font-size: 14px; font-weight: 700; cursor: pointer; font-family: inherit;
+    display: flex; align-items: center; gap: 6px;
+    box-shadow: 0 4px 12px rgba(37,99,235,0.3);
     transition: all 0.15s;
   }
-  .dash-btn-signout:hover { background: rgba(239,68,68,0.15); border-color: rgba(239,68,68,0.5); }
-  .dash-btn-primary {
-    height: 40px; padding: 0 20px; border-radius: 10px; border: none;
-    background: linear-gradient(135deg, #6366f1, #4f46e5); color: white;
-    font-size: 14px; font-weight: 600; cursor: pointer; display: flex; align-items: center;
-    box-shadow: 0 4px 12px -2px rgba(99,102,241,0.3);
-    transition: all 0.15s;
-  }
-  .dash-btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 20px -2px rgba(99,102,241,0.4); }
-  .dash-avatar {
-    width: 40px; height: 40px; border-radius: 50%; border: none;
-    background: rgba(99,102,241,0.15); color: #a5b4fc;
-    font-size: 14px; font-weight: 700; cursor: pointer;
-    display: flex; align-items: center; justify-content: center;
-    transition: background 0.15s;
-  }
-  .dash-avatar:hover { background: rgba(99,102,241,0.25); }
+  .d-build-btn:hover:not(:disabled) { background: linear-gradient(135deg, #3b82f6, #2563eb); transform: translateY(-1px); }
+  .d-build-btn:disabled { opacity: 0.4; cursor: default; }
 
-  .dash-hero {
+  /* Dropdowns */
+  .d-dropdown {
+    position: absolute; z-index: 100; border-radius: 12px;
+    background: rgba(16,20,28,0.98); border: 1px solid rgba(255,255,255,0.08);
+    box-shadow: 0 16px 48px rgba(0,0,0,0.6); overflow: hidden;
+    min-width: 180px;
+  }
+  .d-dropdown-model { bottom: 42px; left: 0; min-width: 220px; }
+  .d-dropdown-menu { top: 42px; right: 0; min-width: 200px; }
+  .d-drop-header {
+    padding: 8px 14px 4px; font-size: 10px; font-weight: 700;
+    letter-spacing: 0.06em; text-transform: uppercase;
+  }
+  .d-drop-item {
+    display: flex; align-items: center; width: 100%;
+    padding: 8px 14px; border: none; background: transparent;
+    color: rgba(255,255,255,0.8); font-size: 13px; font-weight: 500;
+    cursor: pointer; text-align: left; font-family: inherit;
+  }
+  .d-drop-item:hover, .d-drop-item.active { background: rgba(255,255,255,0.06); }
+  .d-check { margin-left: auto; color: #86efac; font-size: 12px; }
+
+  /* Stats */
+  .d-stats-row {
     position: relative; z-index: 1;
-    max-width: 1100px; margin: 20px auto 40px;
-    padding: 48px 40px; border-radius: 20px;
-    background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(6,182,212,0.04));
-    border: 1px solid rgba(255,255,255,0.06);
-    display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px;
+    display: flex; gap: 32px; margin-top: 48px;
+    padding: 0 24px;
   }
-  .dash-hero h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
-  .dash-hero p { margin-top: 8px; font-size: 15px; color: rgba(148,163,184,0.7); }
-  .dash-hero-badges { display: flex; gap: 8px; flex-wrap: wrap; }
-  .badge {
-    padding: 5px 12px; border-radius: 8px; font-size: 12px; font-weight: 600;
-    background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.5);
-  }
-  .badge-admin { background: rgba(168,85,247,0.12); color: #c084fc; }
-  .badge-active { background: rgba(34,197,94,0.12); color: #86efac; }
-  .badge-status { background: rgba(34,197,94,0.12); color: #86efac; }
+  .d-stat { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .d-stat-val { font-size: 20px; font-weight: 700; color: #e2e8f0; }
+  .d-stat-label { font-size: 12px; color: rgba(148,163,184,0.45); }
 
-  .dash-stats {
-    position: relative; z-index: 1;
-    max-width: 1100px; margin: 0 auto 32px;
-    display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;
-  }
-  .stat-card {
-    padding: 24px; border-radius: 16px;
-    background: rgba(255,255,255,0.025); border: 1px solid rgba(255,255,255,0.04);
-    display: flex; flex-direction: column; gap: 12px;
-  }
-  .stat-icon {
-    width: 40px; height: 40px; border-radius: 10px;
-    background: rgba(99,102,241,0.1); color: #818cf8;
-    display: flex; align-items: center; justify-content: center;
-  }
-  .stat-icon.purple { background: rgba(168,85,247,0.1); color: #a78bfa; }
-  .stat-icon.green { background: rgba(34,197,94,0.1); color: #86efac; }
-  .stat-icon.cyan { background: rgba(6,182,212,0.1); color: #67e8f9; }
-  .stat-value { font-size: 28px; font-weight: 700; color: #f1f5f9; }
-  .stat-label { font-size: 13px; color: rgba(148,163,184,0.5); }
-
-  .dash-grid {
-    position: relative; z-index: 1;
-    max-width: 1100px; margin: 0 auto;
-    display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px;
-  }
-  .action-card {
-    display: flex; align-items: center; gap: 16px;
-    padding: 24px; border-radius: 16px;
-    background: rgba(255,255,255,0.025); border: 1px solid rgba(255,255,255,0.04);
-    cursor: pointer; transition: all 0.2s;
-  }
-  .action-card:hover {
-    background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.08);
-    transform: translateY(-2px);
-  }
-  .action-primary {
-    background: linear-gradient(135deg, rgba(99,102,241,0.1), rgba(6,182,212,0.05));
-    border-color: rgba(99,102,241,0.15);
-    grid-column: 1 / -1;
-  }
-  .action-primary:hover { border-color: rgba(99,102,241,0.3); }
-  .action-icon {
-    width: 48px; height: 48px; border-radius: 12px; flex-shrink: 0;
-    background: rgba(99,102,241,0.1); color: #818cf8;
-    display: flex; align-items: center; justify-content: center;
-  }
-  .action-primary .action-icon { background: rgba(99,102,241,0.15); }
-  .action-content { flex: 1; min-width: 0; }
-  .action-content h3 { font-size: 16px; font-weight: 600; color: #f1f5f9; }
-  .action-content p { font-size: 13px; color: rgba(148,163,184,0.6); margin-top: 4px; }
-  .action-arrow { font-size: 18px; color: rgba(148,163,184,0.3); }
-
-  @media (max-width: 768px) {
-    .dash-stats { grid-template-columns: repeat(2, 1fr); }
-    .dash-grid { grid-template-columns: 1fr; }
-    .dash-hero { padding: 32px 24px; }
-    .dash-hero h1 { font-size: 22px; }
+  @media (max-width: 640px) {
+    .d-headline { font-size: 28px; }
+    .d-prompt-bar { flex-wrap: wrap; }
+    .d-stats-row { gap: 20px; }
   }
 `;
