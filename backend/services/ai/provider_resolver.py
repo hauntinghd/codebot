@@ -56,28 +56,24 @@ FAL_MODELS = {
     "gemini-2.5-flash-vision": {"fal_id": "google/gemini-2.5-flash",    "category": "vision", "tier": "premium",  "label": "Gemini Flash Vision",    "description": "Fast multimodal. Screenshots & UI.",                "cost_per_1k": 0.00203, "endpoint": "openrouter", "reasoning_required": False},
     "gpt-4o-vision":           {"fal_id": "openai/gpt-4o",              "category": "vision", "tier": "premium",  "label": "GPT-4o Vision",          "description": "OpenAI's multimodal. Strong image analysis.",       "cost_per_1k": 0.00500, "endpoint": "openrouter", "reasoning_required": False},
 
-    # ====== IMAGE GENERATION ======
-    "flux-pro-ultra":    {"fal_id": "fal-ai/flux-pro/v1.1-ultra",         "category": "image",  "tier": "frontier", "label": "FLUX Pro Ultra",       "description": "Best image generation. Photorealistic.",            "cost_per_1k": 0.06, "endpoint": "fal-native", "reasoning_required": False},
-    "recraft-v3":        {"fal_id": "fal-ai/recraft-v3",                  "category": "image",  "tier": "premium",  "label": "Recraft V3",           "description": "Design-focused image generation.",                  "cost_per_1k": 0.04, "endpoint": "fal-native", "reasoning_required": False},
-    "ideogram-v3":       {"fal_id": "fal-ai/ideogram/v3",                 "category": "image",  "tier": "premium",  "label": "Ideogram V3",          "description": "Best text-in-image rendering.",                     "cost_per_1k": 0.04, "endpoint": "fal-native", "reasoning_required": False},
-    "flux-dev":          {"fal_id": "fal-ai/flux/dev",                    "category": "image",  "tier": "fast",     "label": "FLUX Dev",             "description": "Fast open-source image generation.",                "cost_per_1k": 0.025,"endpoint": "fal-native", "reasoning_required": False},
-    "sd-3.5-large":      {"fal_id": "fal-ai/stable-diffusion-v35-large",  "category": "image",  "tier": "fast",     "label": "Stable Diffusion 3.5", "description": "Stable Diffusion latest. Free-tier image gen.",     "cost_per_1k": 0.015,"endpoint": "fal-native", "reasoning_required": False},
+    # ====== IMAGE GENERATION (auto-used when CodeBot builds websites) ======
+    "imagen4":           {"fal_id": "fal-ai/imagen4/preview",             "category": "image",  "tier": "frontier", "label": "Imagen 4",             "description": "Google's best. Used for website asset generation.", "cost_per_1k": 0.05, "endpoint": "fal-native", "reasoning_required": False, "auto": True},
+    "flux-pro-ultra":    {"fal_id": "fal-ai/flux-pro/v1.1-ultra",         "category": "image",  "tier": "premium",  "label": "FLUX Pro Ultra",       "description": "Photorealistic image generation.",                  "cost_per_1k": 0.06, "endpoint": "fal-native", "reasoning_required": False, "auto": True},
+    "recraft-v3":        {"fal_id": "fal-ai/recraft-v3",                  "category": "image",  "tier": "premium",  "label": "Recraft V3",           "description": "Design-focused. Logos, icons, UI assets.",          "cost_per_1k": 0.04, "endpoint": "fal-native", "reasoning_required": False, "auto": True},
 
-    # ====== VIDEO GENERATION ======
-    "kling-v2.1":       {"fal_id": "fal-ai/kling-video/v2.1/standard/text-to-video", "category": "video", "tier": "frontier", "label": "Kling V2.1",   "description": "Top-tier text-to-video generation.",           "cost_per_1k": 0.10, "endpoint": "fal-native", "reasoning_required": False},
-    "minimax-video":     {"fal_id": "fal-ai/minimax/video-01",            "category": "video",  "tier": "premium",  "label": "MiniMax Video",        "description": "High quality video generation.",                    "cost_per_1k": 0.08, "endpoint": "fal-native", "reasoning_required": False},
-    "wan-video":         {"fal_id": "fal-ai/wan/v2.1/1080p/text-to-video","category": "video",  "tier": "premium",  "label": "Wan V2.1 1080p",       "description": "1080p video generation from text.",                 "cost_per_1k": 0.06, "endpoint": "fal-native", "reasoning_required": False},
+    # ====== VIDEO GENERATION (toggle — off by default) ======
+    "kling-v2.1":       {"fal_id": "fal-ai/kling-video/v2.1/standard/text-to-video", "category": "video", "tier": "premium", "label": "Kling V2.1 Standard", "description": "Default video gen. Used only when toggled on.",  "cost_per_1k": 0.10, "endpoint": "fal-native", "reasoning_required": False, "toggle": True, "default_on": False},
+    "pixverse-c1":      {"fal_id": "fal-ai/pixverse/c1/text-to-video",    "category": "video",  "tier": "frontier", "label": "PixVerse C1",          "description": "Premium cinematic video. 5x cost.",                "cost_per_1k": 0.50, "endpoint": "fal-native", "reasoning_required": False, "toggle": True, "default_on": False},
 
-    # ====== TTS — Text to Speech ======
-    "kokoro-tts":        {"fal_id": "fal-ai/kokoro/american-english",     "category": "tts",    "tier": "fast",     "label": "Kokoro TTS",           "description": "Natural American English speech.",                  "cost_per_1k": 0.005,"endpoint": "fal-native", "reasoning_required": False},
-    "f5-tts":            {"fal_id": "fal-ai/f5-tts",                     "category": "tts",    "tier": "premium",  "label": "F5 TTS",               "description": "High-quality voice cloning & speech.",              "cost_per_1k": 0.008,"endpoint": "fal-native", "reasoning_required": False},
+    # ====== TTS — voice input readback (used in chat UI) ======
+    "kokoro-tts":        {"fal_id": "fal-ai/kokoro/american-english",     "category": "tts",    "tier": "fast",     "label": "Kokoro TTS",           "description": "Natural speech. Reads CodeBot responses aloud.",    "cost_per_1k": 0.005,"endpoint": "fal-native", "reasoning_required": False, "auto": True},
+    "f5-tts":            {"fal_id": "fal-ai/f5-tts",                     "category": "tts",    "tier": "premium",  "label": "F5 TTS",               "description": "Voice cloning quality speech output.",              "cost_per_1k": 0.008,"endpoint": "fal-native", "reasoning_required": False},
 
-    # ====== STT — Speech to Text ======
-    "whisper":           {"fal_id": "fal-ai/whisper",                    "category": "stt",    "tier": "fast",     "label": "Whisper",              "description": "OpenAI Whisper. Fast, accurate transcription.",     "cost_per_1k": 0.003,"endpoint": "fal-native", "reasoning_required": False},
+    # ====== STT — voice input (user speaks their prompt) ======
+    "whisper":           {"fal_id": "fal-ai/whisper",                    "category": "stt",    "tier": "fast",     "label": "Whisper",              "description": "Transcribes user voice to text prompt.",            "cost_per_1k": 0.003,"endpoint": "fal-native", "reasoning_required": False, "auto": True},
 
-    # ====== 3D GENERATION ======
-    "trellis-3d":        {"fal_id": "fal-ai/trellis",                   "category": "3d",     "tier": "frontier", "label": "Trellis 3D",           "description": "Image-to-3D mesh generation.",                     "cost_per_1k": 0.08, "endpoint": "fal-native", "reasoning_required": False},
-    "hunyuan-3d":        {"fal_id": "fal-ai/hunyuan3d-v2/text-to-3d",   "category": "3d",     "tier": "premium",  "label": "Hunyuan3D V2",         "description": "Text-to-3D model generation.",                     "cost_per_1k": 0.06, "endpoint": "fal-native", "reasoning_required": False},
+    # ====== 3D GENERATION (toggle — off by default) ======
+    "reconviagen-0.5":   {"fal_id": "fal-ai/reconviagen-0.5",           "category": "3d",     "tier": "frontier", "label": "ReconViagen 0.5",      "description": "Image-to-3D reconstruction. Toggle to enable.",     "cost_per_1k": 0.08, "endpoint": "fal-native", "reasoning_required": False, "toggle": True, "default_on": False},
 
     # ====== FAST / CHEAP ======
     "claude-haiku-4.5":  {"fal_id": "anthropic/claude-haiku-4.5",       "category": "fast",   "tier": "fast",     "label": "Claude Haiku 4.5",     "description": "Fast Anthropic model.",                             "cost_per_1k": 0.00311, "endpoint": "openrouter", "reasoning_required": False},

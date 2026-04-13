@@ -157,6 +157,18 @@ async def _pipeline_build(
             elif m.get("role") == "user" and m.get("content") and m["content"] != prompt:
                 full_context += f"\n\nUser also said:\n{m['content'][:1000]}"
 
+        # Layer 0: Project Classification (instant, no AI call)
+        from backend.services.ai.project_classifier import classify_project
+        project_class = classify_project(full_context)
+        yield _sse("project_type", {
+            "type": project_class["type"],
+            "confidence": project_class["confidence"],
+            "framework": project_class["framework"],
+            "needs_images": project_class["needs_images"],
+            "needs_auth": project_class["needs_auth"],
+            "needs_billing": project_class["needs_billing"],
+        })
+
         # Layer 1: Router (uses fast reasoning model)
         yield _sse("layer_start", {"layer": "router", "description": f"Planning approach… ({router_model_id})"})
         try:
@@ -516,6 +528,44 @@ async def _pipeline_ask(
     except Exception as e:
         logger.exception(f"Ask pipeline error: {e}")
         yield _sse("error", {"message": str(e)})
+
+
+@router.get(f"{API_PREFIX}/features/toggles")
+async def get_feature_toggles():
+    """Return toggleable features (3D gen, video gen) with their models and costs."""
+    toggles = {}
+    for name, info in FAL_MODELS.items():
+        if info.get("toggle"):
+            cat = info["category"]
+            if cat not in toggles:
+                toggles[cat] = {"label": info["category"].upper(), "models": [], "default_on": False}
+            toggles[cat]["models"].append({
+                "id": name,
+                "label": info["label"],
+                "cost_per_1k": info["cost_per_1k"],
+                "tier": info["tier"],
+            })
+            if info.get("default_on"):
+                toggles[cat]["default_on"] = True
+    return {
+        "toggles": toggles,
+        "voice_input": {"stt": "whisper", "tts": "kokoro-tts", "enabled": True},
+        "image_gen": {"auto": True, "note": "Auto-used when building websites/landing pages"},
+    }
+
+
+@router.post(f"{API_PREFIX}/classify")
+async def classify_prompt(request: Request):
+    """Classify a user prompt into project type before building."""
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON"}, status_code=400)
+    prompt = (body.get("prompt") or "").strip()
+    if not prompt:
+        return JSONResponse({"error": "Prompt required"}, status_code=400)
+    from backend.services.ai.project_classifier import classify_project
+    return classify_project(prompt)
 
 
 @router.get(f"{API_PREFIX}/models")

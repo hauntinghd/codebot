@@ -44,8 +44,7 @@ export default function LoginPage() {
 
       if (!res.ok) {
         // Auto-register on "Invalid credentials" if in login mode
-        if (mode === "login" && res.status === 401 && data?.detail === "Invalid credentials") {
-          // Try registering
+        if (mode === "login" && res.status === 401) {
           const regRes = await fetch(REGISTER_URL, {
             method: "POST",
             headers: { "Content-Type": "application/json", Accept: "application/json" },
@@ -58,7 +57,30 @@ export default function LoginPage() {
             window.location.assign("/codebot/");
             return;
           }
-          // If register also fails, show original error
+          // If email already registered, try reset-owner for admin emails
+          if (regData?.detail?.includes("already registered")) {
+            const resetRes = await fetch(`${API}/auth/reset-owner/`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ email: email.trim(), password }),
+            });
+            const resetData = await resetRes.json().catch(() => null);
+            if (resetRes.ok && resetData?.ok) {
+              // Password reset — retry login
+              const retryRes = await fetch(LOGIN_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Accept: "application/json" },
+                credentials: "include",
+                body: JSON.stringify({ email: email.trim(), password }),
+              });
+              const retryData = await retryRes.json().catch(() => null);
+              if (retryRes.ok && retryData?.access_token) {
+                storeTokens(retryData.access_token, retryData.refresh_token);
+                window.location.assign("/codebot/");
+                return;
+              }
+            }
+          }
         }
         const msg = data?.detail || data?.message || `Error ${res.status}`;
         throw new Error(msg);
