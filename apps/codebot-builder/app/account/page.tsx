@@ -121,7 +121,7 @@ export default function AccountBillingPage() {
   }
 
   return (
-    <AuthGate redirectTo={`${BASE}/login`} allowCookieSessionFallback>
+    <>
       <div style={st.page}>
         <div style={st.wrap}>
           {/* Header */}
@@ -224,6 +224,6 @@ export default function AccountBillingPage() {
           <div style={{ height: 20 }} />
         </div>
       </div>
-    </AuthGate>
+    </>
   );
 }

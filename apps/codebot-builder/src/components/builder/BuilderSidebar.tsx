@@ -7,30 +7,30 @@ type BuildMode = "build" | "ask" | "plan";
 
 const BASE = "/codebot";
 
-type ModelEntry = { id: string; label: string; tier: "free" | "pro"; group: string; disabled?: boolean; cost?: string };
+type ModelEntry = { id: string; label: string; tier: "frontier" | "premium" | "fast"; cost: string };
 
 const MODELS: ModelEntry[] = [
-  // Coding — Frontier
-  { id: "claude-opus-4-6",    label: "Claude Opus 4.6",     tier: "pro",  group: "Coding — Frontier",  cost: "$0.016/1k" },
-  { id: "gpt-5",              label: "GPT-5",                tier: "pro",  group: "Coding — Frontier",  cost: "$0.009/1k" },
-  { id: "claude-sonnet-4-6",  label: "Claude Sonnet 4.6",   tier: "pro",  group: "Coding — Frontier",  cost: "$0.009/1k" },
-  { id: "claude-sonnet-4.5",  label: "Claude Sonnet 4.5",   tier: "pro",  group: "Coding — Premium",   cost: "$0.009/1k" },
-  { id: "gpt-4.1",            label: "GPT-4.1",              tier: "pro",  group: "Coding — Premium",   cost: "$0.007/1k" },
-  { id: "deepseek-v3.1",      label: "DeepSeek V3.1",       tier: "free", group: "Coding — Premium",   cost: "$0.001/1k" },
-  // Reasoning
-  { id: "o3",                  label: "OpenAI o3",            tier: "pro",  group: "Reasoning",          cost: "$0.007/1k" },
-  { id: "gemini-2.5-pro",     label: "Gemini 2.5 Pro",      tier: "pro",  group: "Reasoning",          cost: "$0.008/1k" },
-  { id: "deepseek-r1",        label: "DeepSeek R1",          tier: "free", group: "Reasoning",          cost: "$0.002/1k" },
-  // Thinking
-  { id: "claude-sonnet-4.5-thinking", label: "Claude 4.5 Thinking", tier: "pro", group: "Thinking",    cost: "$0.009/1k" },
-  { id: "gemini-2.5-pro-thinking",    label: "Gemini Pro Thinking", tier: "pro", group: "Thinking",    cost: "$0.008/1k" },
-  // Fast / Cheap
-  { id: "gemini-2.5-flash",       label: "Gemini 2.5 Flash",    tier: "free", group: "Fast",           cost: "$0.002/1k" },
-  { id: "claude-haiku-4.5",       label: "Claude Haiku 4.5",    tier: "free", group: "Fast",           cost: "$0.003/1k" },
-  { id: "gpt-5-mini",             label: "GPT-5 Mini",           tier: "free", group: "Fast",           cost: "$0.002/1k" },
-  { id: "gemini-2.5-flash-lite",  label: "Gemini Flash Lite",   tier: "free", group: "Fast",           cost: "$0.0003/1k" },
-  { id: "gpt-5-nano",             label: "GPT-5 Nano",           tier: "free", group: "Fast",           cost: "$0.0003/1k" },
+  // Frontier — most powerful
+  { id: "claude-opus-4-6",    label: "Claude Opus 4.6",     tier: "frontier", cost: "$0.016/1k" },
+  { id: "gpt-5",              label: "GPT-5",                tier: "frontier", cost: "$0.009/1k" },
+  { id: "claude-sonnet-4-6",  label: "Claude Sonnet 4.6",   tier: "frontier", cost: "$0.009/1k" },
+  // Premium — strong + cheaper
+  { id: "claude-sonnet-4.5",  label: "Claude Sonnet 4.5",   tier: "premium",  cost: "$0.009/1k" },
+  { id: "gpt-4.1",            label: "GPT-4.1",              tier: "premium",  cost: "$0.007/1k" },
+  { id: "deepseek-v3.1",      label: "DeepSeek V3.1",       tier: "premium",  cost: "$0.001/1k" },
+  // Fast — speed + budget
+  { id: "gemini-2.5-flash",       label: "Gemini 2.5 Flash",    tier: "fast", cost: "$0.002/1k" },
+  { id: "claude-haiku-4.5",       label: "Claude Haiku 4.5",    tier: "fast", cost: "$0.003/1k" },
+  { id: "gpt-5-mini",             label: "GPT-5 Mini",           tier: "fast", cost: "$0.002/1k" },
+  { id: "gemini-2.5-flash-lite",  label: "Gemini Flash Lite",   tier: "fast", cost: "$0.0003/1k" },
+  { id: "gpt-5-nano",             label: "GPT-5 Nano",           tier: "fast", cost: "$0.0003/1k" },
 ];
+
+const TIER_COLORS: Record<string, string> = {
+  frontier: "#c084fc",
+  premium: "#60a5fa",
+  fast: "#86efac",
+};
 
 const MODE_META: Record<BuildMode, { label: string; desc: string; icon: string }> = {
   build: { label: "Build", desc: "Generate and run code", icon: "⚡" },
@@ -166,13 +166,12 @@ export default function BuilderSidebar(props: {
   const currentModel = MODELS.find((m) => m.id === selectedModel) ?? MODELS[0];
 
   const modelGroups = useMemo(() => {
-    const groups: { name: string; models: ModelEntry[] }[] = [];
-    const seen = new Set<string>();
-    for (const m of MODELS) {
-      if (!seen.has(m.group)) { seen.add(m.group); groups.push({ name: m.group, models: [] }); }
-      groups.find((g) => g.name === m.group)!.models.push(m);
-    }
-    return groups;
+    const tiers = ["frontier", "premium", "fast"] as const;
+    const labels: Record<string, string> = { frontier: "Frontier", premium: "Premium", fast: "Fast" };
+    return tiers.map((t) => ({
+      name: labels[t],
+      models: MODELS.filter((m) => m.tier === t),
+    })).filter((g) => g.models.length > 0);
   }, []);
 
   const actionLabel = mode === "build" ? "Build now" : mode === "ask" ? "Ask" : "Plan";
@@ -312,8 +311,8 @@ export default function BuilderSidebar(props: {
             <div style={{ position: "relative", flex: "1 1 0" }} ref={modelRef}>
               <button type="button" onClick={() => { setModelOpen((s) => !s); setModeOpen(false); }} style={{ width: "100%", height: 34, borderRadius: 8, border: "none", background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.85)", fontSize: 12, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 10px", fontFamily: "inherit" }}>
                 <span style={{ display: "flex", alignItems: "center", gap: 5, overflow: "hidden" }}>
-                  <span style={{ fontSize: 10, padding: "1px 5px", borderRadius: 4, background: currentModel.tier === "free" ? "rgba(34,197,94,0.15)" : "rgba(168,85,247,0.15)", color: currentModel.tier === "free" ? "rgba(134,239,172,1)" : "rgba(216,180,254,1)", fontWeight: 700, flexShrink: 0 }}>
-                    {currentModel.tier === "free" ? "FREE" : "PRO"}
+                  <span style={{ fontSize: 9, padding: "1px 5px", borderRadius: 4, background: `${TIER_COLORS[currentModel.tier]}20`, color: TIER_COLORS[currentModel.tier], fontWeight: 700, flexShrink: 0, textTransform: "uppercase" as const }}>
+                    {currentModel.tier}
                   </span>
                   <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{currentModel.label}</span>
                 </span>
@@ -326,14 +325,12 @@ export default function BuilderSidebar(props: {
                       <div style={{ padding: "8px 12px 4px", fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.3)", letterSpacing: "0.05em", textTransform: "uppercase", ...(gi > 0 ? { borderTop: "1px solid rgba(255,255,255,0.06)" } : {}) }}>{g.name}</div>
                       {g.models.map((m) => {
                         const active = m.id === selectedModel;
-                        const isFree = m.tier === "free";
-                        const off = !!m.disabled;
+                        const tc = TIER_COLORS[m.tier] || "#fff";
                         return (
-                          <button key={m.id} type="button" disabled={off} onClick={() => { if (!off) { onModelChange?.(m.id); setModelOpen(false); } }} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "7px 12px", border: "none", background: active ? "rgba(255,255,255,0.06)" : "transparent", color: off ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.85)", fontSize: 12, cursor: off ? "not-allowed" : "pointer", textAlign: "left", fontFamily: "inherit", opacity: off ? 0.5 : 1 }}>
-                            <span style={{ fontSize: 9, padding: "1px 5px", borderRadius: 4, background: isFree ? "rgba(34,197,94,0.15)" : "rgba(168,85,247,0.15)", color: isFree ? "rgba(134,239,172,1)" : "rgba(216,180,254,1)", fontWeight: 700, flexShrink: 0 }}>{isFree ? "FREE" : "PRO"}</span>
-                            <span style={{ fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.label}</span>
-                            {off && <span style={{ marginLeft: "auto", fontSize: 9, color: "rgba(255,255,255,0.3)", flexShrink: 0 }}>SOON</span>}
-                            {!off && active && <span style={{ marginLeft: "auto", fontSize: 11, color: "rgba(34,197,94,0.8)", flexShrink: 0 }}>✓</span>}
+                          <button key={m.id} type="button" onClick={() => { onModelChange?.(m.id); setModelOpen(false); }} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "7px 12px", border: "none", background: active ? "rgba(255,255,255,0.06)" : "transparent", color: "rgba(255,255,255,0.85)", fontSize: 12, cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}>
+                            <span style={{ fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{m.label}</span>
+                            <span style={{ fontSize: 9, color: "rgba(255,255,255,0.35)", flexShrink: 0 }}>{m.cost}</span>
+                            {active && <span style={{ fontSize: 11, color: "rgba(34,197,94,0.8)", flexShrink: 0 }}>✓</span>}
                           </button>
                         );
                       })}

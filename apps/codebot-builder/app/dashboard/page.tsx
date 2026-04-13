@@ -72,11 +72,8 @@ export default function DashboardPage() {
           </div>
         </div>
         <div className="dash-header-right">
-          <Link href={`${BASE}/builder`} className="dash-btn-primary">
-            Open Builder
-          </Link>
-          <button className="dash-avatar" onClick={logout} title="Sign out">
-            {initials}
+          <button className="dash-btn-signout" onClick={logout}>
+            Sign Out
           </button>
         </div>
       </header>
@@ -228,6 +225,13 @@ const STYLES = `
     box-shadow: 0 0 8px rgba(129,140,248,0.5);
   }
   .dash-header-right { display: flex; gap: 10px; align-items: center; }
+  .dash-btn-signout {
+    height: 40px; padding: 0 20px; border-radius: 10px; border: 1px solid rgba(239,68,68,0.3);
+    background: rgba(239,68,68,0.08); color: #fca5a5;
+    font-size: 14px; font-weight: 500; cursor: pointer; font-family: inherit;
+    transition: all 0.15s;
+  }
+  .dash-btn-signout:hover { background: rgba(239,68,68,0.15); border-color: rgba(239,68,68,0.5); }
   .dash-btn-primary {
     height: 40px; padding: 0 20px; border-radius: 10px; border: none;
     background: linear-gradient(135deg, #6366f1, #4f46e5); color: white;

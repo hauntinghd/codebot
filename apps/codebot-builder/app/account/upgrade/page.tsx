@@ -104,7 +104,7 @@ export default function UpgradePage() {
   const renewLabel = useMemo(() => { const s = (me?.subscription_status || "").toLowerCase(); if (s.includes("active") || s.includes("trial")) { const d = fmtDate(me?.current_period_end); return d !== "—" ? `Renews ${d}` : "Active"; } return me?.subscription_status || "—"; }, [me]);
 
   return (
-    <AuthGate redirectTo={`${BASE}/login`} allowCookieSessionFallback>
+    <>
       <div style={st.page}>
         <div style={st.wrap}>
           <div style={st.header}>
@@ -177,6 +177,6 @@ export default function UpgradePage() {
           <div style={{ height: 20 }} />
         </div>
       </div>
-    </AuthGate>
+    </>
   );
 }

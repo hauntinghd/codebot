@@ -265,7 +265,18 @@ def register_routes(api: FastAPI):
 
         cust_id = str(u["stripe_customer_id"] or "")
         if not cust_id:
-            raise HTTPException(status_code=400, detail="No Stripe customer on file. Subscribe first.")
+            # Auto-create Stripe customer for this user
+            try:
+                customer = stripe.Customer.create(
+                    email=str(u["email"]),
+                    metadata={"user_id": str(u["id"]), "source": "codebot"},
+                )
+                cust_id = str(customer.id)
+                with db() as conn:
+                    conn.execute("UPDATE users SET stripe_customer_id = ? WHERE id = ?", (cust_id, str(u["id"])))
+                logger.info(f"[Stripe] Auto-created customer {cust_id} for user {u['id']}")
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Could not create Stripe customer: {e}")
 
         return_url = f"{APP_BASE_URL}{APP_BASE_PATH}/"
         try:
