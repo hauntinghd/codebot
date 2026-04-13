@@ -568,11 +568,16 @@ async def list_models(request: Request):
         },
         "topups": CBT_TOPUP_PACKS,
         "categories": {
-            "coding":    {"label": "Coding",    "description": "Best for code generation", "icon": "code"},
+            "coding":    {"label": "Coding",    "description": "Code generation & engineering", "icon": "code"},
             "reasoning": {"label": "Reasoning", "description": "Extended chain-of-thought", "icon": "brain"},
             "thinking":  {"label": "Thinking",  "description": "Deep reasoning with visible steps", "icon": "lightbulb"},
             "planning":  {"label": "Planning",  "description": "Architecture & system design", "icon": "layout"},
             "vision":    {"label": "Vision",    "description": "Image & screenshot understanding", "icon": "eye"},
+            "image":     {"label": "Image Gen", "description": "AI image generation", "icon": "image"},
+            "video":     {"label": "Video Gen", "description": "AI video generation", "icon": "film"},
+            "tts":       {"label": "TTS",       "description": "Text to speech", "icon": "mic"},
+            "stt":       {"label": "STT",       "description": "Speech to text", "icon": "headphones"},
+            "3d":        {"label": "3D",        "description": "3D model generation", "icon": "box"},
             "fast":      {"label": "Fast",      "description": "Quick responses, low cost", "icon": "zap"},
         },
     }

@@ -3,12 +3,11 @@
 import React, { useState } from "react";
 
 // Use backend URL directly if configured, otherwise try relative
-const BACKEND = (process.env.NEXT_PUBLIC_BACKEND_URL || "").trim();
-const API = BACKEND
-  ? `${BACKEND}/codebot/api`
-  : (process.env.NEXT_PUBLIC_CODEBOT_API_BASE || "").trim() || "/codebot/api";
-const LOGIN_URL = `${API}/auth/login`;
-const REGISTER_URL = `${API}/auth/register`;
+// Backend URL — Vercel rewrites /codebot/api/* to Render backend
+// Trailing slash required because Next.js trailingSlash:true redirects without it
+const API = (process.env.NEXT_PUBLIC_CODEBOT_API_BASE || "").trim() || "/codebot/api";
+const LOGIN_URL = `${API}/auth/login/`;
+const REGISTER_URL = `${API}/auth/register/`;
 
 function storeTokens(access: string, refresh?: string) {
   try {
@@ -44,6 +43,23 @@ export default function LoginPage() {
       const data = await res.json().catch(() => null);
 
       if (!res.ok) {
+        // Auto-register on "Invalid credentials" if in login mode
+        if (mode === "login" && res.status === 401 && data?.detail === "Invalid credentials") {
+          // Try registering
+          const regRes = await fetch(REGISTER_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Accept: "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ email: email.trim(), password }),
+          });
+          const regData = await regRes.json().catch(() => null);
+          if (regRes.ok && regData?.access_token) {
+            storeTokens(regData.access_token, regData.refresh_token);
+            window.location.assign("/codebot/");
+            return;
+          }
+          // If register also fails, show original error
+        }
         const msg = data?.detail || data?.message || `Error ${res.status}`;
         throw new Error(msg);
       }
@@ -106,12 +122,12 @@ export default function LoginPage() {
                 <div className="stat-label">First Token</div>
               </div>
             </div>
-            <div className="brand-models">
-              <span className="model-tag">Claude Opus 4.6</span>
-              <span className="model-tag">GPT-5</span>
-              <span className="model-tag">Gemini 2.5 Pro</span>
-              <span className="model-tag">o3</span>
-              <span className="model-tag">DeepSeek R1</span>
+            <div className="brand-capabilities">
+              <span className="cap-tag">Code Generation</span>
+              <span className="cap-tag">Image &amp; Video</span>
+              <span className="cap-tag">3D Rendering</span>
+              <span className="cap-tag">Voice &amp; Audio</span>
+              <span className="cap-tag">Deep Reasoning</span>
             </div>
           </div>
           <div className="brand-footer">
@@ -369,7 +385,7 @@ export default function LoginPage() {
           gap: 6px;
           margin-top: 24px;
         }
-        .model-tag {
+        .cap-tag {
           padding: 4px 10px;
           border-radius: 6px;
           background: rgba(255,255,255,0.04);

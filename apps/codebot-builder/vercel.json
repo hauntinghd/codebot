@@ -1,0 +1,14 @@
+{
+  "installCommand": "npm install",
+  "buildCommand": "npx next build",
+  "outputDirectory": ".next",
+  "framework": "nextjs",
+  "env": {
+    "NEXT_PUBLIC_CODEBOT_API_BASE": "/codebot/api",
+    "NEXT_PUBLIC_BACKEND_URL": "https://codebot-yjhi.onrender.com"
+  },
+  "rewrites": [
+    { "source": "/codebot/api/:path(.*)/", "destination": "https://codebot-yjhi.onrender.com/codebot/api/:path" },
+    { "source": "/codebot/api/:path(.*)", "destination": "https://codebot-yjhi.onrender.com/codebot/api/:path" }
+  ]
+}
