@@ -181,7 +181,7 @@ logger.info(f"[CORS] offline_mode={OFFLINE_MODE}")
 api.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOW_ORIGINS,
-    allow_origin_regex=(r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$" if OFFLINE_MODE else None),
+    allow_origin_regex=r"^https?://(.+\.trycloudflare\.com|.+\.onrender\.com|.+\.nyptidindustries\.com|localhost|127\.0\.0\.1)(:\d+)?$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
