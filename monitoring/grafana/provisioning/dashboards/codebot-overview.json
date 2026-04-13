@@ -1,0 +1,44 @@
+{
+  "id": null,
+  "uid": "codebot-overview",
+  "title": "CodeBot Overview",
+  "tags": ["codebot","overview"],
+  "timezone": "browser",
+  "schemaVersion": 27,
+  "version": 1,
+  "refresh": "10s",
+  "panels": [
+    {
+      "type": "row",
+      "title": "System",
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0}
+    },
+    {
+      "type": "graph",
+      "title": "Backend Memory RSS",
+      "datasource": "Prometheus",
+      "targets": [
+        {"expr": "process_resident_memory_bytes{job=\"manual_codebot\"}", "refId": "A"}
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 1}
+    },
+    {
+      "type": "graph",
+      "title": "Backend CPU Usage",
+      "datasource": "Prometheus",
+      "targets": [
+        {"expr": "rate(process_cpu_seconds_total{job=\"manual_codebot\"}[1m]) * 100", "refId": "A"}
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 1}
+    },
+    {
+      "type": "graph",
+      "title": "Prometheus Target Health",
+      "datasource": "Prometheus",
+      "targets": [
+        {"expr": "up", "refId": "A"}
+      ],
+      "gridPos": {"h": 6, "w": 24, "x": 0, "y": 9}
+    }
+  ]
+}

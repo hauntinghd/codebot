@@ -1,0 +1,20 @@
+[Unit]
+Description=CodeBot API (FastAPI / Uvicorn)
+After=network.target
+
+[Service]
+User=omatic657
+WorkingDirectory=/home/omatic657/aicoderbot
+
+# Load environment variables
+EnvironmentFile=/home/omatic657/aicoderbot/.env
+Environment=PYTHONUNBUFFERED=1
+
+ExecStart=/usr/bin/python3 -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --workers 1 --proxy-headers --forwarded-allow-ips="*"
+
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
+

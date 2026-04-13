@@ -1,0 +1,13 @@
+# Ignore large or host-mounted folders and local env files for dev image builds
+monitoring/
+data/
+node_modules/
+.venv/
+db-data/
+.git/
+.env
+.env.*
+*.log
+nohup.out
+*.db
+__pycache__/

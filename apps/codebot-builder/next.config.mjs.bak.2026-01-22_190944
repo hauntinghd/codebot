@@ -1,0 +1,14 @@
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  async rewrites() {
+    return [
+      // Proxy API calls from the Builder dev server -> backend API
+      {
+        source: "/codebot/api/:path*",
+        destination: "http://127.0.0.1:8000/codebot/api/:path*",
+      },
+    ];
+  },
+};
+
+export default nextConfig;

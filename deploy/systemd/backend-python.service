@@ -1,0 +1,17 @@
+[Unit]
+Description=CodeBot backend (uvicorn FastAPI)
+After=network.target
+
+[Service]
+Type=simple
+User=omatic657
+WorkingDirectory=/home/omatic657/aicoderbot
+Environment=PYTHONPATH=/home/omatic657/aicoderbot
+EnvironmentFile=/home/omatic657/aicoderbot/.env
+ExecStart=/usr/bin/env python3 -m uvicorn backend.main:app --host 127.0.0.1 --port 8080 --log-level info
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=4096
+
+[Install]
+WantedBy=multi-user.target

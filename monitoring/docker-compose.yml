@@ -1,0 +1,19 @@
+version: '3.8'
+services:
+  grafana:
+    image: grafana/grafana:9.5.0
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./grafana/data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    env_file:
+      - ./grafana.env
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./alertmanager/config.yml:/etc/alertmanager/config.yml
+    command: ["--config.file=/etc/alertmanager/config.yml"]

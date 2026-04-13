@@ -105,29 +105,22 @@ export default function LoginPage() {
               <span className="headline-gradient">with AI that actually works.</span>
             </h1>
             <p className="brand-sub">
-              26 frontier AI models. 5-layer self-auditing pipeline.
-              Ship SaaS, websites, and mobile apps — first try.
+              38 frontier AI models across 11 categories.
+              5-layer self-auditing pipeline. Ship production apps — first try.
             </p>
             <div className="brand-stats">
               <div className="stat">
-                <div className="stat-num">26</div>
+                <div className="stat-num">38</div>
                 <div className="stat-label">AI Models</div>
+              </div>
+              <div className="stat">
+                <div className="stat-num">11</div>
+                <div className="stat-label">Categories</div>
               </div>
               <div className="stat">
                 <div className="stat-num">5</div>
                 <div className="stat-label">Audit Layers</div>
               </div>
-              <div className="stat">
-                <div className="stat-num">&lt;3s</div>
-                <div className="stat-label">First Token</div>
-              </div>
-            </div>
-            <div className="brand-capabilities">
-              <span className="cap-tag">Code Generation</span>
-              <span className="cap-tag">Image &amp; Video</span>
-              <span className="cap-tag">3D Rendering</span>
-              <span className="cap-tag">Voice &amp; Audio</span>
-              <span className="cap-tag">Deep Reasoning</span>
             </div>
           </div>
           <div className="brand-footer">
@@ -225,12 +218,15 @@ export default function LoginPage() {
       </div>
 
       <style>{`
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
         .login-page {
           min-height: 100vh;
+          width: 100%;
           display: flex;
           align-items: center;
           justify-content: center;
-          padding: 24px;
+          padding: 16px;
           position: relative;
           overflow: hidden;
           background: #050a12;
@@ -293,8 +289,7 @@ export default function LoginPage() {
           z-index: 1;
           display: flex;
           width: 100%;
-          max-width: 960px;
-          min-height: 580px;
+          max-width: 920px;
           border-radius: 24px;
           overflow: hidden;
           background: rgba(15,23,42,0.6);
@@ -309,12 +304,13 @@ export default function LoginPage() {
         /* ---- Brand Panel ---- */
         .brand-panel {
           flex: 1;
-          padding: 48px 40px 36px;
+          padding: 40px 32px 28px;
           display: flex;
           flex-direction: column;
           justify-content: space-between;
           background: linear-gradient(135deg, rgba(99,102,241,0.05), rgba(6,182,212,0.03));
           border-right: 1px solid rgba(255,255,255,0.04);
+          min-width: 0;
         }
 
         .brand-badge {
@@ -340,7 +336,7 @@ export default function LoginPage() {
         }
 
         .brand-headline {
-          font-size: 32px;
+          font-size: 28px;
           font-weight: 700;
           color: #f1f5f9;
           line-height: 1.25;
@@ -363,11 +359,11 @@ export default function LoginPage() {
 
         .brand-stats {
           display: flex;
-          gap: 32px;
-          margin-top: 32px;
+          gap: 24px;
+          margin-top: 28px;
         }
         .stat-num {
-          font-size: 28px;
+          font-size: 24px;
           font-weight: 700;
           color: #e2e8f0;
         }
@@ -379,21 +375,10 @@ export default function LoginPage() {
           letter-spacing: 0.05em;
         }
 
-        .brand-models {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 6px;
-          margin-top: 24px;
+        .brand-capabilities {
+          display: none;
         }
-        .cap-tag {
-          padding: 4px 10px;
-          border-radius: 6px;
-          background: rgba(255,255,255,0.04);
-          border: 1px solid rgba(255,255,255,0.06);
-          font-size: 11px;
-          color: rgba(148,163,184,0.7);
-          font-weight: 500;
-        }
+        /* removed cap-tags */
 
         .brand-footer {
           margin-top: 20px;
@@ -408,9 +393,10 @@ export default function LoginPage() {
         /* ---- Form Panel ---- */
         .form-panel {
           flex: 1;
-          padding: 48px 40px;
+          padding: 40px 32px;
           display: flex;
           align-items: center;
+          min-width: 0;
         }
         .form-inner { width: 100%; }
 

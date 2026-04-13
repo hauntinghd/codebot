@@ -1,0 +1,23 @@
+[Unit]
+Description=CodeBot AI Application
+After=network.target
+
+[Service]
+Type=simple
+User=omatic657
+WorkingDirectory=/home/omatic657/aicoderbot
+Environment="PATH=/home/omatic657/aicoderbot/.venv/bin:/usr/local/bin:/usr/bin:/bin"
+EnvironmentFile=/home/omatic657/aicoderbot/.env
+ExecStart=/home/omatic657/aicoderbot/.venv/bin/uvicorn backend.main:app --host 0.0.0.0 --port 8000 --workers 1
+Restart=on-failure
+RestartSec=5
+StartLimitInterval=60
+StartLimitBurst=3
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=codebot
+# Allow more time for multiprocess uvicorn to start
+TimeoutStartSec=120
+
+[Install]
+WantedBy=multi-user.target

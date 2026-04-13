@@ -1,0 +1,3 @@
+{
+  "/api/orchestrator/[...path]/route": "app/api/orchestrator/[...path]/route.js"
+}

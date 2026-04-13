@@ -1,0 +1,50 @@
+<svg width="400" height="400" viewBox="0 0 400 400" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="planetGrad" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:#ff8c00;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#cd7f32;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#8b4513;stop-opacity:0.8" />
+    </radialGradient>
+    <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#daa520;stop-opacity:0.6" />
+      <stop offset="50%" style="stop-color:#f4a460;stop-opacity:0.8" />
+      <stop offset="100%" style="stop-color:#daa520;stop-opacity:0.6" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Green border circle -->
+  <circle cx="200" cy="200" r="195" fill="none" stroke="#00ff7f" stroke-width="6"/>
+  
+  <!-- Planet -->
+  <circle cx="200" cy="200" r="140" fill="url(#planetGrad)"/>
+  
+  <!-- Ring -->
+  <ellipse cx="200" cy="200" rx="190" ry="60" fill="url(#ringGrad)" opacity="0.7" transform="rotate(-20 200 200)"/>
+  
+  <!-- Chess King piece -->
+  <g transform="translate(200, 200)">
+    <!-- Base -->
+    <ellipse cx="0" cy="90" rx="45" ry="15" fill="#1a1a1a"/>
+    
+    <!-- Body -->
+    <path d="M -35 90 L -25 20 L 25 20 L 35 90 Z" fill="#2d2d2d"/>
+    
+    <!-- Middle ring -->
+    <ellipse cx="0" cy="20" rx="28" ry="10" fill="#1a1a1a"/>
+    
+    <!-- Upper body -->
+    <path d="M -25 20 L -18 -30 L 18 -30 L 25 20 Z" fill="#2d2d2d"/>
+    
+    <!-- Crown base -->
+    <ellipse cx="0" cy="-30" rx="20" ry="8" fill="#1a1a1a"/>
+    
+    <!-- Crown -->
+    <path d="M -15 -30 L -12 -50 L 12 -50 L 15 -30 Z" fill="#2d2d2d"/>
+    
+    <!-- Cross horizontal -->
+    <rect x="-12" y="-70" width="24" height="8" fill="#1a1a1a" rx="2"/>
+    
+    <!-- Cross vertical -->
+    <rect x="-4" y="-85" width="8" height="30" fill="#1a1a1a" rx="2"/>
+  </g>
+</svg>

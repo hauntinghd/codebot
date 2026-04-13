@@ -1,0 +1,1455 @@
+from __future__ import annotations
+
+import asyncio
+import base64
+import datetime as dt
+import hashlib
+import os
+import re
+import sqlite3
+import time
+import uuid
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+import httpx
+import stripe
+from fastapi import (
+    Depends,
+    FastAPI,
+    File,
+    Form,
+    Header,
+    HTTPException,
+    Request,
+    UploadFile,
+)
+from fastapi.responses import HTMLResponse, JSONResponse
+from pydantic import BaseModel
+
+# -----------------------------------------------------------------------------
+# Config
+# -----------------------------------------------------------------------------
+
+APP_BASE_URL = os.getenv("APP_BASE_URL", "http://localhost").rstrip("/")
+
+STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "").strip()
+STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "").strip()
+STRIPE_PRICE_PLUS = os.getenv("STRIPE_PRICE_PLUS", "").strip()
+STRIPE_PRICE_PRO = os.getenv("STRIPE_PRICE_PRO", "").strip()
+
+DB_PATH = os.getenv("AICODERBOT_DB", "/var/lib/aicoderbot/aicoderbot.sqlite3")
+
+MAX_QUEUE = int(os.getenv("MAX_QUEUE", "25"))
+MAX_CONCURRENT = int(os.getenv("MAX_CONCURRENT", "2"))
+
+ENFORCEMENT_ENABLED = os.getenv("ENFORCEMENT_ENABLED", "1").strip() not in (
+    "0",
+    "false",
+    "False",
+    "",
+)
+ADMIN_BYPASS_TOKEN = os.getenv("ADMIN_BYPASS_TOKEN", "").strip()
+BRAND_NAME = os.getenv("BRAND_NAME", "NYPTID AI Coder Bot").strip()
+
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
+OPENAI_MODEL_TEXT = os.getenv("OPENAI_MODEL_TEXT", "gpt-4o-mini").strip()
+OPENAI_MODEL_VISION = os.getenv("OPENAI_MODEL_VISION", OPENAI_MODEL_TEXT).strip()
+
+UPLOAD_ROOT = Path(os.getenv("UPLOAD_ROOT", "/var/lib/aicoderbot/uploads")).resolve()
+MAX_UPLOAD_FILES = int(os.getenv("MAX_UPLOAD_FILES", "20"))
+MAX_FILE_MB = int(os.getenv("MAX_FILE_MB", "50"))
+MAX_FILE_BYTES = MAX_FILE_MB * 1024 * 1024
+
+# If Stripe key is set, configure Stripe SDK
+if STRIPE_SECRET_KEY:
+    stripe.api_key = STRIPE_SECRET_KEY
+
+
+def stripe_mode_from_key(secret_key: str) -> str:
+    if secret_key.startswith("sk_test_"):
+        return "test"
+    if secret_key.startswith("sk_live_"):
+        return "live"
+    return "unknown"
+
+
+STRIPE_MODE = stripe_mode_from_key(STRIPE_SECRET_KEY) if STRIPE_SECRET_KEY else "unknown"
+TEST_MODE = STRIPE_MODE == "test"
+
+# -----------------------------------------------------------------------------
+# App
+# -----------------------------------------------------------------------------
+
+app = FastAPI(title="AI Coder Bot Gatekeeper", version="0.5.0")
+
+# Global concurrency limiter for LLM calls (single-process MVP)
+_GLOBAL_LLM_SEM = asyncio.Semaphore(MAX_CONCURRENT)
+_USER_SEMS: Dict[str, asyncio.Semaphore] = {}
+_USER_SEMS_LOCK = asyncio.Lock()
+
+
+async def _user_sem(user_key: str, per_user: int) -> asyncio.Semaphore:
+    async with _USER_SEMS_LOCK:
+        sem = _USER_SEMS.get(user_key)
+        if sem is None:
+            sem = asyncio.Semaphore(per_user)
+            _USER_SEMS[user_key] = sem
+        return sem
+
+
+# -----------------------------------------------------------------------------
+# SQLite storage
+# -----------------------------------------------------------------------------
+
+def _db() -> sqlite3.Connection:
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def _column_exists(conn: sqlite3.Connection, table: str, col: str) -> bool:
+    rows = conn.execute(f"PRAGMA table_info({table});").fetchall()
+    for r in rows:
+        if (r["name"] or "").lower() == col.lower():
+            return True
+    return False
+
+
+def _init_db() -> None:
+    conn = _db()
+    try:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS customers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_key TEXT UNIQUE NOT NULL,
+                stripe_mode TEXT NOT NULL DEFAULT 'live',
+                email TEXT,
+                stripe_customer_id TEXT,
+                subscription_status TEXT,
+                price_id TEXT,
+                current_period_end INTEGER,
+                updated_at INTEGER NOT NULL
+            );
+            """
+        )
+        if not _column_exists(conn, "customers", "stripe_mode"):
+            conn.execute(
+                "ALTER TABLE customers ADD COLUMN stripe_mode TEXT NOT NULL DEFAULT 'live';"
+            )
+
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS usage_monthly (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_key TEXT NOT NULL,
+                stripe_mode TEXT NOT NULL,
+                yyyymm TEXT NOT NULL,
+                bucket TEXT NOT NULL, -- 'standard' | 'boost'
+                input_tokens INTEGER NOT NULL DEFAULT 0,
+                output_tokens INTEGER NOT NULL DEFAULT 0,
+                requests INTEGER NOT NULL DEFAULT 0,
+                updated_at INTEGER NOT NULL,
+                UNIQUE(user_key, stripe_mode, yyyymm, bucket)
+            );
+            """
+        )
+
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS projects (
+                project_id TEXT PRIMARY KEY,
+                user_key TEXT NOT NULL,
+                name TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
+            """
+        )
+
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS project_files (
+                file_id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                user_key TEXT NOT NULL,
+                kind TEXT NOT NULL, -- 'code'|'image'|'video'|'other'
+                path TEXT NOT NULL,
+                filename TEXT NOT NULL,
+                ext TEXT,
+                size_bytes INTEGER NOT NULL,
+                sha256 TEXT NOT NULL,
+                stored_path TEXT, -- for binary files
+                text_content TEXT, -- for code/text
+                created_at INTEGER NOT NULL
+            );
+            """
+        )
+
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS project_chunks (
+                chunk_id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                user_key TEXT NOT NULL,
+                file_id TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                start_line INTEGER NOT NULL,
+                end_line INTEGER NOT NULL,
+                content TEXT NOT NULL
+            );
+            """
+        )
+
+        conn.commit()
+    finally:
+        conn.close()
+
+
+@app.on_event("startup")
+def startup() -> None:
+    _init_db()
+    UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
+
+
+# -----------------------------------------------------------------------------
+# Customers helpers
+# -----------------------------------------------------------------------------
+
+def upsert_customer(
+    *,
+    user_key: str,
+    stripe_mode: str,
+    email: Optional[str],
+    stripe_customer_id: Optional[str],
+    subscription_status: Optional[str],
+    price_id: Optional[str],
+    current_period_end: Optional[int],
+) -> None:
+    now = int(time.time())
+    conn = _db()
+    try:
+        conn.execute(
+            """
+            INSERT INTO customers (user_key, stripe_mode, email, stripe_customer_id, subscription_status, price_id, current_period_end, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(user_key) DO UPDATE SET
+                stripe_mode=excluded.stripe_mode,
+                email=excluded.email,
+                stripe_customer_id=excluded.stripe_customer_id,
+                subscription_status=excluded.subscription_status,
+                price_id=excluded.price_id,
+                current_period_end=excluded.current_period_end,
+                updated_at=excluded.updated_at;
+            """,
+            (
+                user_key,
+                stripe_mode,
+                email,
+                stripe_customer_id,
+                subscription_status,
+                price_id,
+                current_period_end,
+                now,
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_customer_by_user_key(user_key: str) -> Optional[Dict[str, Any]]:
+    conn = _db()
+    try:
+        row = conn.execute(
+            "SELECT * FROM customers WHERE user_key = ? LIMIT 1;", (user_key,)
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def get_customer_by_stripe_customer_id(cus_id: str) -> Optional[Dict[str, Any]]:
+    conn = _db()
+    try:
+        row = conn.execute(
+            "SELECT * FROM customers WHERE stripe_customer_id = ? LIMIT 1;", (cus_id,)
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+# -----------------------------------------------------------------------------
+# Auth (minimal)
+# -----------------------------------------------------------------------------
+
+def require_user_key(x_user_key: Optional[str] = Header(default=None)) -> str:
+    if not x_user_key or len(x_user_key) < 8:
+        raise HTTPException(status_code=401, detail="Missing/invalid X-User-Key header.")
+    return x_user_key
+
+
+def _admin_bypass_ok(request: Optional[Request]) -> bool:
+    if request is None:
+        return False
+    if not ADMIN_BYPASS_TOKEN:
+        return False
+    got = (request.headers.get("x-admin-bypass") or "").strip()
+    return bool(got) and got == ADMIN_BYPASS_TOKEN
+
+
+def _is_active(rec: Optional[Dict[str, Any]]) -> bool:
+    if not rec:
+        return False
+    status = (rec.get("subscription_status") or "").lower()
+    return status in ("active", "trialing")
+
+
+def require_active_subscription(user_key: str = Depends(require_user_key)) -> Dict[str, Any]:
+    rec = get_customer_by_user_key(user_key)
+    if not rec or not _is_active(rec):
+        status = ((rec or {}).get("subscription_status") or "none").lower()
+        raise HTTPException(status_code=402, detail=f"Subscription required (status={status}).")
+    return rec
+
+
+# -----------------------------------------------------------------------------
+# Plan entitlements
+# -----------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class PlanLimits:
+    plan: str
+    standard_input_tokens: int
+    standard_output_tokens: int
+    boost_input_tokens: int
+    boost_output_tokens: int
+    per_user_concurrency: int
+
+
+PLUS_LIMITS = PlanLimits(
+    plan="plus",
+    standard_input_tokens=80_000_000,
+    standard_output_tokens=4_000_000,
+    boost_input_tokens=1_000_000,
+    boost_output_tokens=250_000,
+    per_user_concurrency=2,
+)
+
+PRO_LIMITS = PlanLimits(
+    plan="pro",
+    standard_input_tokens=300_000_000,
+    standard_output_tokens=20_000_000,
+    boost_input_tokens=5_000_000,
+    boost_output_tokens=1_000_000,
+    per_user_concurrency=6,
+)
+
+
+def _plan_from_customer(rec: Optional[Dict[str, Any]]) -> str:
+    if not rec:
+        return "none"
+    price_id = (rec.get("price_id") or "").strip()
+    if STRIPE_PRICE_PRO and price_id == STRIPE_PRICE_PRO:
+        return "pro"
+    if STRIPE_PRICE_PLUS and price_id == STRIPE_PRICE_PLUS:
+        return "plus"
+    status = (rec.get("subscription_status") or "").lower()
+    if status in ("active", "trialing"):
+        return "plus"
+    return "none"
+
+
+def _limits_for(user_key: str, request: Optional[Request]) -> PlanLimits:
+    if _admin_bypass_ok(request):
+        return PlanLimits(
+            plan="admin",
+            standard_input_tokens=10**18,
+            standard_output_tokens=10**18,
+            boost_input_tokens=10**18,
+            boost_output_tokens=10**18,
+            per_user_concurrency=10,
+        )
+    rec = get_customer_by_user_key(user_key)
+    plan = _plan_from_customer(rec)
+    if plan == "pro":
+        return PRO_LIMITS
+    if plan == "plus":
+        return PLUS_LIMITS
+    return PlanLimits(
+        plan="none",
+        standard_input_tokens=0,
+        standard_output_tokens=0,
+        boost_input_tokens=0,
+        boost_output_tokens=0,
+        per_user_concurrency=1,
+    )
+
+
+def _yyyymm_now() -> str:
+    return dt.datetime.utcnow().strftime("%Y%m")
+
+
+def _usage_get(user_key: str, stripe_mode: str, yyyymm: str, bucket: str) -> Dict[str, int]:
+    conn = _db()
+    try:
+        row = conn.execute(
+            "SELECT input_tokens, output_tokens, requests FROM usage_monthly WHERE user_key=? AND stripe_mode=? AND yyyymm=? AND bucket=? LIMIT 1;",
+            (user_key, stripe_mode, yyyymm, bucket),
+        ).fetchone()
+        if not row:
+            return {"input_tokens": 0, "output_tokens": 0, "requests": 0}
+        return {
+            "input_tokens": int(row["input_tokens"]),
+            "output_tokens": int(row["output_tokens"]),
+            "requests": int(row["requests"]),
+        }
+    finally:
+        conn.close()
+
+
+def _usage_add(user_key: str, stripe_mode: str, yyyymm: str, bucket: str, input_tokens: int, output_tokens: int) -> None:
+    now = int(time.time())
+    conn = _db()
+    try:
+        conn.execute(
+            """
+            INSERT INTO usage_monthly (user_key, stripe_mode, yyyymm, bucket, input_tokens, output_tokens, requests, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, 1, ?)
+            ON CONFLICT(user_key, stripe_mode, yyyymm, bucket) DO UPDATE SET
+                input_tokens = input_tokens + excluded.input_tokens,
+                output_tokens = output_tokens + excluded.output_tokens,
+                requests = requests + 1,
+                updated_at = excluded.updated_at;
+            """,
+            (user_key, stripe_mode, yyyymm, bucket, int(input_tokens), int(output_tokens), now),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _ensure_quota(user_key: str, request: Optional[Request], bucket: str) -> Tuple[PlanLimits, Dict[str, int]]:
+    lim = _limits_for(user_key, request)
+    if lim.plan in ("none",):
+        raise HTTPException(status_code=402, detail="Subscription required.")
+    yyyymm = _yyyymm_now()
+    used = _usage_get(user_key, STRIPE_MODE, yyyymm, bucket)
+
+    if bucket == "standard":
+        if used["input_tokens"] >= lim.standard_input_tokens or used["output_tokens"] >= lim.standard_output_tokens:
+            raise HTTPException(status_code=429, detail="quota_exceeded (standard)")
+    elif bucket == "boost":
+        if used["input_tokens"] >= lim.boost_input_tokens or used["output_tokens"] >= lim.boost_output_tokens:
+            raise HTTPException(status_code=429, detail="quota_exceeded (boost)")
+    else:
+        raise HTTPException(status_code=400, detail="Invalid bucket.")
+    return lim, used
+
+
+# -----------------------------------------------------------------------------
+# Enforcement middleware
+# -----------------------------------------------------------------------------
+
+_PUBLIC_API_PATHS = {
+    "/api/health",
+    "/api/checkout",
+    "/api/me",
+    "/api/portal",
+}
+
+@app.middleware("http")
+async def enforce_subscription_middleware(request: Request, call_next):
+    path = request.url.path or "/"
+
+    if not ENFORCEMENT_ENABLED:
+        return await call_next(request)
+
+    # Allow basic pages + health + Stripe webhook always.
+    if path == "/health" or path.startswith("/chatbot") or path == "/" or path.startswith("/stripe/"):
+        return await call_next(request)
+
+    if path.startswith("/api/") and path not in _PUBLIC_API_PATHS:
+        if _admin_bypass_ok(request):
+            return await call_next(request)
+
+        user_key = request.headers.get("x-user-key")
+        if not user_key or len(user_key) < 8:
+            return JSONResponse(status_code=401, content={"ok": False, "error": "missing_user_key"})
+
+        rec = get_customer_by_user_key(user_key)
+        if not _is_active(rec):
+            status = ((rec or {}).get("subscription_status") or "none").lower()
+            return JSONResponse(
+                status_code=402,
+                content={"ok": False, "error": "payment_required", "subscription_status": status},
+            )
+
+    return await call_next(request)
+
+
+# -----------------------------------------------------------------------------
+# Health + minimal UI (now includes key generation UX)
+# -----------------------------------------------------------------------------
+
+@app.get("/health")
+async def health():
+    return {
+        "ok": True,
+        "queue": 0,
+        "max_queue": MAX_QUEUE,
+        "max_concurrent": MAX_CONCURRENT,
+        "stripe_mode": STRIPE_MODE,
+        "test_mode": TEST_MODE,
+    }
+
+
+@app.get("/api/health")
+async def api_health():
+    return await health()
+
+
+@app.get("/", response_class=HTMLResponse)
+async def front_door():
+    # This page generates/stores a key locally (pre-alpha UX) and shows status.
+    return f"""
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8"/>
+    <title>{BRAND_NAME}</title>
+  </head>
+  <body style="font-family: Arial, sans-serif; margin: 28px; max-width: 980px;">
+    <h1>{BRAND_NAME}</h1>
+    <p>API is up.</p>
+    <p><b>Stripe mode:</b> <code>{STRIPE_MODE}</code></p>
+
+    <hr/>
+
+    <h2>Your User Key (X-User-Key)</h2>
+    <p style="margin-top:6px;">
+      This is your pre-alpha login token. Keep it private.
+    </p>
+
+    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+      <code id="uk" style="font-size:14px; padding:8px 10px; background:#f4f4f4; border:1px solid #ddd; border-radius:6px;"></code>
+      <button id="copy" style="padding:8px 10px;">Copy</button>
+      <button id="regen" style="padding:8px 10px;">Regenerate</button>
+    </div>
+
+    <p id="status" style="margin-top:12px;"></p>
+
+    <details style="margin-top:10px;">
+      <summary>cURL examples</summary>
+      <pre id="curl" style="white-space:pre-wrap; background:#111; color:#eee; padding:12px; border-radius:8px;"></pre>
+    </details>
+
+    <p style="margin-top:16px;"><a href="/chatbot">Go to /chatbot</a></p>
+
+    <script>
+      const LS_KEY = "aicoderbot_user_key";
+
+      function genKey() {{
+        const b = new Uint8Array(16);
+        crypto.getRandomValues(b);
+        const hex = Array.from(b).map(x => x.toString(16).padStart(2,"0")).join("");
+        return "uk_" + hex;
+      }}
+
+      function setKey(k) {{
+        localStorage.setItem(LS_KEY, k);
+        document.getElementById("uk").textContent = k;
+        document.getElementById("curl").textContent =
+`export USER_KEY='${{k}}'
+curl -sS https://chatbot.nyptidindustries.com/api/me -H "X-User-Key: $USER_KEY"
+curl -sS https://chatbot.nyptidindustries.com/api/limits -H "X-User-Key: $USER_KEY"
+curl -sS https://chatbot.nyptidindustries.com/api/projects -H "X-User-Key: $USER_KEY"`;
+      }}
+
+      let uk = localStorage.getItem(LS_KEY);
+      if (!uk || uk.length < 12) {{
+        uk = genKey();
+        setKey(uk);
+      }} else {{
+        setKey(uk);
+      }}
+
+      document.getElementById("copy").onclick = async () => {{
+        try {{
+          await navigator.clipboard.writeText(uk);
+          alert("Copied X-User-Key to clipboard.");
+        }} catch (e) {{
+          alert("Copy failed. Select and copy manually.");
+        }}
+      }};
+
+      document.getElementById("regen").onclick = () => {{
+        if (!confirm("Regenerate key? This creates a NEW identity.")) return;
+        uk = genKey();
+        setKey(uk);
+        refreshStatus();
+      }};
+
+      async function refreshStatus() {{
+        const el = document.getElementById("status");
+        el.textContent = "Checking subscription status...";
+        try {{
+          const r = await fetch("/api/me", {{ headers: {{ "X-User-Key": uk }} }});
+          const j = await r.json();
+          const plan = j.plan || "none";
+          el.innerHTML = `<b>Status:</b> <code>${{j.subscription_status}}</code> &nbsp; <b>Plan:</b> <code>${{plan}}</code>`;
+        }} catch (e) {{
+          el.textContent = "Could not fetch /api/me.";
+        }}
+      }}
+      refreshStatus();
+    </script>
+  </body>
+</html>
+"""
+
+
+@app.get("/chatbot", response_class=HTMLResponse)
+async def chatbot_page():
+    return """
+<!doctype html>
+<html>
+  <head><meta charset="utf-8"/><title>/chatbot</title></head>
+  <body style="font-family: Arial, sans-serif; margin: 24px;">
+    <h1>/chatbot</h1>
+    <p><a href="/">← Back</a></p>
+    <p>This is a minimal page. Your key is stored in <code>localStorage</code> as <code>aicoderbot_user_key</code>.</p>
+    <p><b>X-User-Key:</b> <code id="uk"></code></p>
+    <script>
+      const k = localStorage.getItem("aicoderbot_user_key") || "(missing)";
+      document.getElementById("uk").textContent = k;
+    </script>
+  </body>
+</html>
+"""
+
+
+# -----------------------------------------------------------------------------
+# Step 1 endpoint: limits
+# -----------------------------------------------------------------------------
+
+@app.get("/api/limits")
+async def limits(request: Request, user_key: str = Depends(require_user_key)):
+    lim = _limits_for(user_key, request)
+    yyyymm = _yyyymm_now()
+    used_std = _usage_get(user_key, STRIPE_MODE, yyyymm, "standard")
+    used_boost = _usage_get(user_key, STRIPE_MODE, yyyymm, "boost")
+    return {
+        "ok": True,
+        "plan": lim.plan,
+        "stripe_mode": STRIPE_MODE,
+        "yyyymm": yyyymm,
+        "limits": {
+            "standard": {
+                "input_tokens": lim.standard_input_tokens,
+                "output_tokens": lim.standard_output_tokens,
+                "per_user_concurrency": lim.per_user_concurrency,
+            },
+            "boost": {
+                "input_tokens": lim.boost_input_tokens,
+                "output_tokens": lim.boost_output_tokens,
+                "per_user_concurrency": lim.per_user_concurrency,
+            },
+        },
+        "used": {"standard": used_std, "boost": used_boost},
+        "upload_limits": {"max_files_per_request": MAX_UPLOAD_FILES, "max_file_mb": MAX_FILE_MB},
+    }
+
+
+# -----------------------------------------------------------------------------
+# /api/me
+# -----------------------------------------------------------------------------
+
+@app.get("/api/me")
+async def me(user_key: str = Depends(require_user_key)):
+    rec = get_customer_by_user_key(user_key)
+    if not rec:
+        return {
+            "ok": True,
+            "user_key": user_key,
+            "subscription_status": "none",
+            "plan": None,
+            "price_id": None,
+            "current_period_end": None,
+            "stripe_mode": STRIPE_MODE,
+            "test_mode": TEST_MODE,
+        }
+    return {
+        "ok": True,
+        "user_key": user_key,
+        "subscription_status": (rec.get("subscription_status") or "none"),
+        "plan": _plan_from_customer(rec),
+        "price_id": rec.get("price_id"),
+        "current_period_end": rec.get("current_period_end"),
+        "updated_at": rec.get("updated_at"),
+        "stripe_mode": rec.get("stripe_mode") or STRIPE_MODE,
+        "test_mode": TEST_MODE,
+    }
+
+
+# -----------------------------------------------------------------------------
+# Stripe checkout + portal
+# -----------------------------------------------------------------------------
+
+class CheckoutRequest(BaseModel):
+    plan: str
+    email: Optional[str] = None
+
+
+@app.post("/api/checkout")
+async def create_checkout(payload: CheckoutRequest, user_key: str = Depends(require_user_key)):
+    if not STRIPE_SECRET_KEY:
+        raise HTTPException(status_code=500, detail="Stripe not configured (missing STRIPE_SECRET_KEY).")
+
+    plan = payload.plan.strip().lower()
+    if plan not in ("plus", "pro"):
+        raise HTTPException(status_code=400, detail="plan must be 'plus' or 'pro'.")
+
+    if plan == "pro" and not STRIPE_PRICE_PRO:
+        raise HTTPException(status_code=400, detail="Pro plan not enabled.")
+    if plan == "plus" and not STRIPE_PRICE_PLUS:
+        raise HTTPException(status_code=500, detail="Missing STRIPE_PRICE_PLUS.")
+
+    price_id = STRIPE_PRICE_PLUS if plan == "plus" else STRIPE_PRICE_PRO
+
+    existing = get_customer_by_user_key(user_key)
+    existing_mode = (existing or {}).get("stripe_mode") or "live"
+    stripe_customer_id = (existing or {}).get("stripe_customer_id")
+
+    if existing and stripe_customer_id and existing_mode == STRIPE_MODE:
+        customer_id = stripe_customer_id
+        if payload.email:
+            try:
+                stripe.Customer.modify(customer_id, email=payload.email)
+            except Exception:
+                pass
+    else:
+        customer = stripe.Customer.create(email=payload.email, metadata={"user_key": user_key})
+        customer_id = customer["id"]
+        upsert_customer(
+            user_key=user_key,
+            stripe_mode=STRIPE_MODE,
+            email=payload.email,
+            stripe_customer_id=customer_id,
+            subscription_status="incomplete",
+            price_id=price_id,
+            current_period_end=None,
+        )
+
+    success_url = f"{APP_BASE_URL}/?checkout=success"
+    cancel_url = f"{APP_BASE_URL}/?checkout=cancel"
+
+    session = stripe.checkout.Session.create(
+        mode="subscription",
+        customer=customer_id,
+        line_items=[{"price": price_id, "quantity": 1}],
+        success_url=success_url,
+        cancel_url=cancel_url,
+        allow_promotion_codes=True,
+        subscription_data={"metadata": {"user_key": user_key, "plan": plan}},
+        metadata={"user_key": user_key, "plan": plan},
+    )
+
+    return {
+        "ok": True,
+        "checkout_url": session["url"],
+        "session_id": session["id"],
+        "stripe_mode": STRIPE_MODE,
+        "test_mode": TEST_MODE,
+    }
+
+
+class PortalRequest(BaseModel):
+    return_url: Optional[str] = None
+
+
+@app.post("/api/portal")
+async def create_billing_portal(payload: PortalRequest, user_key: str = Depends(require_user_key)):
+    if not STRIPE_SECRET_KEY:
+        raise HTTPException(status_code=500, detail="Stripe not configured (missing STRIPE_SECRET_KEY).")
+    rec = get_customer_by_user_key(user_key)
+    if not rec or not rec.get("stripe_customer_id"):
+        raise HTTPException(status_code=404, detail="No Stripe customer found.")
+    if (rec.get("stripe_mode") or "live") != STRIPE_MODE:
+        raise HTTPException(
+            status_code=409,
+            detail="Customer exists in different Stripe mode; start a new checkout in current mode.",
+        )
+    portal = stripe.billing_portal.Session.create(
+        customer=rec["stripe_customer_id"],
+        return_url=payload.return_url or f"{APP_BASE_URL}/",
+    )
+    return {"ok": True, "url": portal["url"]}
+
+
+# -----------------------------------------------------------------------------
+# Stripe webhook
+# -----------------------------------------------------------------------------
+
+def _extract_subscription_fields(sub: Dict[str, Any]) -> Dict[str, Any]:
+    status = sub.get("status")
+    current_period_end = sub.get("current_period_end")
+    items = sub.get("items", {}).get("data", [])
+    price_id = None
+    if items:
+        price = items[0].get("price") or {}
+        price_id = price.get("id")
+    return {
+        "subscription_status": status,
+        "current_period_end": int(current_period_end) if current_period_end else None,
+        "price_id": price_id,
+    }
+
+
+@app.post("/stripe/webhook")
+async def stripe_webhook(request: Request):
+    if not STRIPE_WEBHOOK_SECRET:
+        raise HTTPException(status_code=500, detail="Stripe webhook not configured (missing STRIPE_WEBHOOK_SECRET).")
+
+    payload = await request.body()
+    sig = request.headers.get("stripe-signature", "")
+
+    try:
+        event = stripe.Webhook.construct_event(payload=payload, sig_header=sig, secret=STRIPE_WEBHOOK_SECRET)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid webhook signature: {e}")
+
+    etype = event.get("type")
+    livemode = bool(event.get("livemode"))
+    event_mode = "live" if livemode else "test"
+    obj = event.get("data", {}).get("object", {}) or {}
+
+    if etype in ("customer.subscription.created", "customer.subscription.updated", "customer.subscription.deleted"):
+        customer_id = obj.get("customer")
+        fields = _extract_subscription_fields(obj)
+        meta = obj.get("metadata") or {}
+        user_key = meta.get("user_key")
+
+        if not user_key and customer_id:
+            rec = get_customer_by_stripe_customer_id(customer_id)
+            if rec:
+                user_key = rec["user_key"]
+
+        if customer_id and user_key:
+            upsert_customer(
+                user_key=user_key,
+                stripe_mode=event_mode,
+                email=None,
+                stripe_customer_id=customer_id,
+                subscription_status=fields["subscription_status"],
+                price_id=fields["price_id"],
+                current_period_end=fields["current_period_end"],
+            )
+
+    return JSONResponse({"received": True})
+
+
+# -----------------------------------------------------------------------------
+# Projects + uploads
+# -----------------------------------------------------------------------------
+
+def _now() -> int:
+    return int(time.time())
+
+
+def _project_dir(user_key: str, project_id: str) -> Path:
+    safe_user = re.sub(r"[^a-zA-Z0-9_\-]", "_", user_key)
+    return (UPLOAD_ROOT / safe_user / project_id).resolve()
+
+
+_TEXT_EXTS = {
+    ".py", ".js", ".ts", ".tsx", ".json", ".yaml", ".yml", ".md", ".txt", ".html", ".css",
+    ".go", ".rs", ".java", ".kt", ".cs", ".c", ".cc", ".cpp", ".h", ".hpp", ".sh", ".bat", ".ps1",
+    ".toml", ".ini", ".env",
+}
+_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp"}
+_VIDEO_EXTS = {".mp4"}
+
+
+def _kind_for_ext(ext: str) -> str:
+    ext = (ext or "").lower()
+    if ext in _TEXT_EXTS:
+        return "code"
+    if ext in _IMAGE_EXTS:
+        return "image"
+    if ext in _VIDEO_EXTS:
+        return "video"
+    return "other"
+
+
+def _guess_mime_for_image_ext(ext: str) -> str:
+    e = (ext or "").lower()
+    if e in (".jpg", ".jpeg"):
+        return "image/jpeg"
+    if e == ".webp":
+        return "image/webp"
+    return "image/png"
+
+
+def _sha256_bytes(b: bytes) -> str:
+    h = hashlib.sha256()
+    h.update(b)
+    return h.hexdigest()
+
+
+def _split_lines(s: str) -> List[str]:
+    return s.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+
+
+def _chunk_text(file_path: str, text: str, max_lines: int = 250) -> List[Tuple[int, int, str]]:
+    lines = _split_lines(text)
+    out: List[Tuple[int, int, str]] = []
+    n = len(lines)
+    i = 0
+    while i < n:
+        start = i + 1
+        end = min(n, i + max_lines)
+        chunk = "\n".join(lines[i:end])
+        out.append((start, end, chunk))
+        i = end
+    return out
+
+
+def _project_create(user_key: str, name: str) -> Dict[str, Any]:
+    project_id = "prj_" + uuid.uuid4().hex
+    now = _now()
+    conn = _db()
+    try:
+        conn.execute(
+            "INSERT INTO projects (project_id, user_key, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?);",
+            (project_id, user_key, name, now, now),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    d = _project_dir(user_key, project_id)
+    d.mkdir(parents=True, exist_ok=True)
+    return {"project_id": project_id, "name": name}
+
+
+def _project_list(user_key: str) -> List[Dict[str, Any]]:
+    conn = _db()
+    try:
+        rows = conn.execute(
+            "SELECT project_id, name, created_at, updated_at FROM projects WHERE user_key=? ORDER BY updated_at DESC;",
+            (user_key,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def _project_owned(user_key: str, project_id: str) -> bool:
+    conn = _db()
+    try:
+        row = conn.execute(
+            "SELECT project_id FROM projects WHERE project_id=? AND user_key=? LIMIT 1;",
+            (project_id, user_key),
+        ).fetchone()
+        return bool(row)
+    finally:
+        conn.close()
+
+
+class CreateProjectReq(BaseModel):
+    name: str
+
+
+@app.post("/api/projects")
+async def create_project(payload: CreateProjectReq, user_key: str = Depends(require_user_key)):
+    name = (payload.name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="name required")
+    return {"ok": True, **_project_create(user_key, name)}
+
+
+@app.get("/api/projects")
+async def list_projects(user_key: str = Depends(require_user_key)):
+    return {"ok": True, "projects": _project_list(user_key)}
+
+
+async def _read_upload_limited(f: UploadFile) -> bytes:
+    buf = bytearray()
+    while True:
+        chunk = await f.read(1024 * 1024)  # 1MB
+        if not chunk:
+            break
+        buf.extend(chunk)
+        if len(buf) > MAX_FILE_BYTES:
+            raise HTTPException(status_code=413, detail=f"File too large (> {MAX_FILE_MB}MB): {f.filename}")
+    return bytes(buf)
+
+
+@app.post("/api/projects/{project_id}/upload")
+async def upload_files(
+    project_id: str,
+    user_key: str = Depends(require_user_key),
+    files: List[UploadFile] = File(...),
+):
+    if not _project_owned(user_key, project_id):
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    if not files:
+        raise HTTPException(status_code=400, detail="No files uploaded")
+    if len(files) > MAX_UPLOAD_FILES:
+        raise HTTPException(status_code=400, detail=f"Too many files. Max per request is {MAX_UPLOAD_FILES}.")
+
+    saved: List[Dict[str, Any]] = []
+    prj_dir = _project_dir(user_key, project_id)
+    prj_dir.mkdir(parents=True, exist_ok=True)
+
+    conn = _db()
+    try:
+        for uf in files:
+            filename = (uf.filename or "").strip()
+            if not filename:
+                continue
+
+            ext = Path(filename).suffix.lower()
+            kind = _kind_for_ext(ext)
+
+            data = await _read_upload_limited(uf)
+            size_bytes = len(data)
+            sha = _sha256_bytes(data)
+
+            file_id = "f_" + uuid.uuid4().hex
+            stored_path: Optional[str] = None
+            text_content: Optional[str] = None
+
+            file_path = filename
+
+            if kind in ("image", "video", "other"):
+                safe_name = re.sub(r"[^a-zA-Z0-9._\-]+", "_", filename)
+                out_path = (prj_dir / f"{file_id}_{safe_name}").resolve()
+                out_path.write_bytes(data)
+                stored_path = str(out_path)
+            else:
+                try:
+                    text_content = data.decode("utf-8")
+                except UnicodeDecodeError:
+                    kind = "other"
+                    safe_name = re.sub(r"[^a-zA-Z0-9._\-]+", "_", filename)
+                    out_path = (prj_dir / f"{file_id}_{safe_name}").resolve()
+                    out_path.write_bytes(data)
+                    stored_path = str(out_path)
+                    text_content = None
+
+            conn.execute(
+                """
+                INSERT INTO project_files
+                (file_id, project_id, user_key, kind, path, filename, ext, size_bytes, sha256, stored_path, text_content, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                """,
+                (file_id, project_id, user_key, kind, file_path, filename, ext, size_bytes, sha, stored_path, text_content, _now()),
+            )
+
+            if kind == "code" and text_content:
+                for (start, end, chunk) in _chunk_text(file_path, text_content, max_lines=250):
+                    chunk_id = "c_" + uuid.uuid4().hex
+                    conn.execute(
+                        """
+                        INSERT INTO project_chunks (chunk_id, project_id, user_key, file_id, file_path, start_line, end_line, content)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+                        """,
+                        (chunk_id, project_id, user_key, file_id, file_path, start, end, chunk),
+                    )
+
+            saved.append({"file_id": file_id, "filename": filename, "path": file_path, "kind": kind, "size_bytes": size_bytes})
+
+        conn.commit()
+    finally:
+        conn.close()
+
+    return {"ok": True, "saved": saved, "max_files_per_request": MAX_UPLOAD_FILES}
+
+
+@app.get("/api/projects/{project_id}/files")
+async def list_project_files(project_id: str, user_key: str = Depends(require_user_key)):
+    if not _project_owned(user_key, project_id):
+        raise HTTPException(status_code=404, detail="Project not found")
+    conn = _db()
+    try:
+        rows = conn.execute(
+            "SELECT file_id, filename, path, kind, ext, size_bytes, sha256, created_at FROM project_files WHERE project_id=? AND user_key=? ORDER BY created_at DESC;",
+            (project_id, user_key),
+        ).fetchall()
+        return {"ok": True, "files": [dict(r) for r in rows]}
+    finally:
+        conn.close()
+
+
+# -----------------------------------------------------------------------------
+# Step 4 MVP: suggest needed files (JSON works; separate multipart endpoint)
+# -----------------------------------------------------------------------------
+
+class SuggestFilesReq(BaseModel):
+    goal: str
+    folder_tree_text: Optional[str] = None
+    error_text: Optional[str] = None
+    # If you want to include images via JSON, pass data URLs:
+    folder_tree_image_data_url: Optional[str] = None
+    error_image_data_url: Optional[str] = None
+    allow_internet: bool = False
+
+
+def _b64_data_url(mime: str, data: bytes) -> str:
+    return f"data:{mime};base64,{base64.b64encode(data).decode('utf-8')}"
+
+
+def _extract_first_json_object(text: str) -> Optional[Dict[str, Any]]:
+    """
+    Find the first balanced JSON object in text, tolerant of extra prose.
+    Not a full JSON parser for all edge cases, but far better than a greedy regex.
+    """
+    s = text or ""
+    start = s.find("{")
+    if start < 0:
+        return None
+
+    depth = 0
+    in_str = False
+    esc = False
+
+    for i in range(start, len(s)):
+        ch = s[i]
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+            continue
+
+        if ch == '"':
+            in_str = True
+            continue
+
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                blob = s[start : i + 1]
+                try:
+                    import json
+                    obj = json.loads(blob)
+                    if isinstance(obj, dict):
+                        return obj
+                except Exception:
+                    return None
+    return None
+
+
+async def _openai_responses(model: str, input_payload: Any) -> Tuple[str, int, int]:
+    if not OPENAI_API_KEY:
+        raise HTTPException(status_code=500, detail="OPENAI_API_KEY not configured")
+
+    headers = {"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"}
+    body = {"model": model, "input": input_payload}
+
+    async with httpx.AsyncClient(timeout=90) as client:
+        r = await client.post("https://api.openai.com/v1/responses", headers=headers, json=body)
+        if r.status_code >= 400:
+            raise HTTPException(status_code=500, detail=f"OpenAI error: {r.status_code} {r.text}")
+        data = r.json()
+
+    text = ""
+    if isinstance(data, dict):
+        if isinstance(data.get("output_text"), str):
+            text = data["output_text"]
+        else:
+            out = data.get("output") or []
+            for item in out:
+                content = item.get("content") if isinstance(item, dict) else None
+                if isinstance(content, list):
+                    for part in content:
+                        if isinstance(part, dict) and part.get("type") in ("output_text", "text"):
+                            t = part.get("text")
+                            if isinstance(t, str):
+                                text += t
+
+    usage = data.get("usage") or {}
+    in_tok = int(usage.get("input_tokens") or 0)
+    out_tok = int(usage.get("output_tokens") or 0)
+    return text.strip(), in_tok, out_tok
+
+
+def _extract_json_list(text: str) -> List[str]:
+    obj = _extract_first_json_object(text)
+    if not obj:
+        return []
+    files = obj.get("needed_files")
+    if not isinstance(files, list):
+        return []
+    out: List[str] = []
+    for f in files:
+        if isinstance(f, str) and f.strip():
+            out.append(f.strip())
+    return out[:MAX_UPLOAD_FILES]
+
+
+@app.post("/api/projects/{project_id}/suggest_files")
+async def suggest_files(
+    project_id: str,
+    payload: SuggestFilesReq,
+    request: Request,
+    user_key: str = Depends(require_user_key),
+):
+    if not _project_owned(user_key, project_id):
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    _ensure_quota(user_key, request, bucket="standard")
+
+    system = (
+        "You are a strict debugging intake agent.\n"
+        "Rules:\n"
+        "- You MUST output valid JSON only.\n"
+        "- JSON schema:\n"
+        '  {"needed_files":[...], "count":N, "why":"...", "internet_required":true|false}\n'
+        "- needed_files must be exact file paths as shown in the folder tree.\n"
+        f"- Max needed_files is {MAX_UPLOAD_FILES}.\n"
+        "- If you cannot see any file paths, return empty needed_files and explain what is missing.\n"
+        "- Do NOT guess file names.\n"
+    )
+
+    parts: List[Dict[str, Any]] = [{"type": "input_text", "text": system}]
+
+    goal = (payload.goal or "").strip()
+    if not goal:
+        raise HTTPException(status_code=400, detail="goal required")
+
+    user_text = f"Goal:\n{goal}\n\n"
+    if payload.folder_tree_text:
+        user_text += f"Folder tree text:\n{payload.folder_tree_text}\n\n"
+    if payload.error_text:
+        user_text += f"Error text:\n{payload.error_text}\n\n"
+    user_text += f"allow_internet={bool(payload.allow_internet)}\n"
+    parts.append({"type": "input_text", "text": user_text})
+
+    # Optional images via JSON data URLs
+    if payload.folder_tree_image_data_url and isinstance(payload.folder_tree_image_data_url, str):
+        parts.append({"type": "input_image", "image_url": payload.folder_tree_image_data_url})
+    if payload.error_image_data_url and isinstance(payload.error_image_data_url, str):
+        parts.append({"type": "input_image", "image_url": payload.error_image_data_url})
+
+    async with _GLOBAL_LLM_SEM:
+        usem = await _user_sem(user_key, _limits_for(user_key, request).per_user_concurrency)
+        async with usem:
+            text, in_tok, out_tok = await _openai_responses(
+                OPENAI_MODEL_VISION if (payload.folder_tree_image_data_url or payload.error_image_data_url) else OPENAI_MODEL_TEXT,
+                [{"role": "user", "content": parts}],
+            )
+
+    _usage_add(user_key, STRIPE_MODE, _yyyymm_now(), "standard", in_tok, out_tok)
+
+    needed = _extract_json_list(text)
+    obj = _extract_first_json_object(text) or {}
+    internet_required = bool(obj.get("internet_required", False))
+    why = str(obj.get("why", ""))[:2000] if obj else text[:2000]
+
+    return {
+        "ok": True,
+        "needed_files": needed,
+        "count": len(needed),
+        "why": why,
+        "internet_required": internet_required,
+        "stripe_mode": STRIPE_MODE,
+        "test_mode": TEST_MODE,
+    }
+
+
+@app.post("/api/projects/{project_id}/suggest_files_upload")
+async def suggest_files_upload(
+    project_id: str,
+    request: Request,
+    user_key: str = Depends(require_user_key),
+    goal: str = Form(...),
+    folder_tree_text: Optional[str] = Form(default=None),
+    error_text: Optional[str] = Form(default=None),
+    allow_internet: bool = Form(default=False),
+    folder_tree_image: Optional[UploadFile] = File(default=None),
+    error_image: Optional[UploadFile] = File(default=None),
+):
+    """
+    Multipart alternative for suggest_files:
+    - Use when you want to upload screenshots directly.
+    - Text fields come from form data.
+    """
+    payload = SuggestFilesReq(
+        goal=goal,
+        folder_tree_text=folder_tree_text,
+        error_text=error_text,
+        allow_internet=bool(allow_internet),
+    )
+
+    if folder_tree_image is not None:
+        img = await _read_upload_limited(folder_tree_image)
+        mime = folder_tree_image.content_type or "image/png"
+        if not mime.startswith("image/"):
+            raise HTTPException(status_code=400, detail="folder_tree_image must be an image")
+        payload.folder_tree_image_data_url = _b64_data_url(mime, img)
+
+    if error_image is not None:
+        img = await _read_upload_limited(error_image)
+        mime = error_image.content_type or "image/png"
+        if not mime.startswith("image/"):
+            raise HTTPException(status_code=400, detail="error_image must be an image")
+        payload.error_image_data_url = _b64_data_url(mime, img)
+
+    return await suggest_files(project_id=project_id, payload=payload, request=request, user_key=user_key)
+
+
+# -----------------------------------------------------------------------------
+# Project chat: retrieval over code chunks + optional image attachments
+# -----------------------------------------------------------------------------
+
+class ProjectChatReq(BaseModel):
+    message: str
+    attachment_file_ids: Optional[List[str]] = None
+    allow_internet: bool = False
+    bucket: str = "standard"
+
+
+def _search_chunks(project_id: str, user_key: str, query: str, limit: int = 8) -> List[Dict[str, Any]]:
+    terms = [t.lower() for t in re.findall(r"[a-zA-Z_][a-zA-Z0-9_]+", query)[:20]]
+    conn = _db()
+    try:
+        rows = conn.execute(
+            "SELECT chunk_id, file_path, start_line, end_line, content FROM project_chunks WHERE project_id=? AND user_key=?;",
+            (project_id, user_key),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    scored: List[Tuple[int, Dict[str, Any]]] = []
+    for r in rows:
+        content = (r["content"] or "").lower()
+        score = 0
+        for t in terms:
+            if t in content:
+                score += 1
+        if score > 0:
+            scored.append((score, dict(r)))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return [d for _, d in scored[:limit]]
+
+
+def _get_file_by_id(user_key: str, project_id: str, file_id: str) -> Optional[Dict[str, Any]]:
+    conn = _db()
+    try:
+        row = conn.execute(
+            "SELECT file_id, kind, filename, path, ext, stored_path, text_content FROM project_files WHERE project_id=? AND user_key=? AND file_id=? LIMIT 1;",
+            (project_id, user_key, file_id),
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+@app.post("/api/projects/{project_id}/chat")
+async def project_chat(
+    project_id: str,
+    payload: ProjectChatReq,
+    request: Request,
+    user_key: str = Depends(require_user_key),
+):
+    if not _project_owned(user_key, project_id):
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    msg = (payload.message or "").strip()
+    if not msg:
+        raise HTTPException(status_code=400, detail="message required")
+
+    bucket = (payload.bucket or "standard").strip().lower()
+    if bucket not in ("standard", "boost"):
+        raise HTTPException(status_code=400, detail="bucket must be standard or boost")
+
+    _ensure_quota(user_key, request, bucket=bucket)
+
+    chunks = _search_chunks(project_id, user_key, msg, limit=8)
+    context = ""
+    citations: List[str] = []
+    for c in chunks:
+        ref = f'{c["file_path"]}:{c["start_line"]}-{c["end_line"]}'
+        citations.append(ref)
+        context += f"\n\n### {ref}\n{c['content']}"
+
+    system = (
+        "You are a code assistant working only from provided context.\n"
+        "Rules:\n"
+        "- Do NOT claim code exists unless it is in the provided context.\n"
+        "- If you need more files, say exactly which file paths you need and why.\n"
+        "- If you propose a fix, output a TRUE unified diff:\n"
+        "  - Must include lines starting with '--- ' and '+++ '\n"
+        "  - Must include '@@' hunks\n"
+        "  - Use file paths exactly as referenced in citations\n"
+        "- Default: no internet. If allow_internet=false and you think internet is required, request permission.\n"
+    )
+
+    user_text = (
+        f"User request:\n{msg}\n\n"
+        f"allow_internet={bool(payload.allow_internet)}\n\n"
+        f"Project context:\n{context if context else '(no code context found)'}\n"
+    )
+
+    parts: List[Dict[str, Any]] = [{"type": "input_text", "text": system + "\n\n" + user_text}]
+    model = OPENAI_MODEL_TEXT
+
+    attach_ids = payload.attachment_file_ids or []
+    if attach_ids:
+        model = OPENAI_MODEL_VISION
+        for fid in attach_ids[:4]:
+            f = _get_file_by_id(user_key, project_id, fid)
+            if not f:
+                continue
+            if f.get("kind") != "image":
+                continue
+            p = f.get("stored_path")
+            if not p:
+                continue
+            b = Path(p).read_bytes()
+            mime = _guess_mime_for_image_ext(f.get("ext") or "")
+            parts.append({"type": "input_image", "image_url": _b64_data_url(mime, b)})
+
+    async with _GLOBAL_LLM_SEM:
+        usem = await _user_sem(user_key, _limits_for(user_key, request).per_user_concurrency)
+        async with usem:
+            text, in_tok, out_tok = await _openai_responses(model, [{"role": "user", "content": parts}])
+
+    _usage_add(user_key, STRIPE_MODE, _yyyymm_now(), bucket, in_tok, out_tok)
+
+    return {
+        "ok": True,
+        "reply": text,
+        "citations": citations,
+        "stripe_mode": STRIPE_MODE,
+        "test_mode": TEST_MODE,
+    }
+
+
+# -----------------------------------------------------------------------------
+# Protected API example (kept)
+# -----------------------------------------------------------------------------
+
+class ChatRequest(BaseModel):
+    message: str
+
+
+@app.post("/api/chat")
+async def chat(payload: ChatRequest, sub: Dict[str, Any] = Depends(require_active_subscription)):
+    msg = (payload.message or "").strip()
+    if not msg:
+        raise HTTPException(status_code=400, detail="message is required.")
+    plan = "pro" if (sub.get("price_id") == STRIPE_PRICE_PRO and STRIPE_PRICE_PRO) else "plus"
+    return {"ok": True, "plan": plan, "reply": f"(stub) You said: {msg}"}

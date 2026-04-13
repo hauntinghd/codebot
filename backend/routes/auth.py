@@ -199,6 +199,30 @@ def _record_to_dict(rec: Any) -> dict[str, Any]:
 
 def register_routes(api, oauth):
     # ---------------------------------------------------------------------
+    # Owner password reset (bootstrap only — uses ADMIN_EMAILS env)
+    # ---------------------------------------------------------------------
+    @api.post(f"{API_PREFIX}/auth/reset-owner")
+    async def reset_owner_password(request: Request):
+        """Reset password for admin email accounts. No auth required — validates email against ADMIN_EMAILS."""
+        try:
+            body = await request.json()
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid JSON")
+        email = normalize_email(body.get("email", ""))
+        new_pw = body.get("password", "")
+        if not email or not new_pw or len(new_pw) < 6:
+            raise HTTPException(status_code=400, detail="Email and password (6+ chars) required")
+        if email not in _admin_emails():
+            raise HTTPException(status_code=403, detail="Not an admin email")
+        row = get_user_by_email(email)
+        if not row:
+            raise HTTPException(status_code=404, detail="User not found")
+        new_hash = _pbkdf2_hash(new_pw)
+        with db() as conn:
+            conn.execute("UPDATE users SET pw_hash=?, is_admin=1 WHERE id=?", (new_hash, str(row["id"])))
+        return {"ok": True, "message": "Password reset and admin promoted"}
+
+    # ---------------------------------------------------------------------
     # Email/Password Auth (JWT)
     # ---------------------------------------------------------------------
     @api.post(f"{API_PREFIX}/auth/register", response_model=TokenOut)

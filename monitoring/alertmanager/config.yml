@@ -1,0 +1,54 @@
+global:
+  resolve_timeout: 5m
+  # These values will be populated from monitoring/alertmanager.env by the deploy script or manually.
+  smtp_from: 'alerts@yourdomain.com'
+  smtp_smarthost: 'smtp.example.com:587'
+  smtp_auth_username: 'smtp-user'
+  smtp_auth_password: 'smtp-pass'
+  # Optional Slack incoming webhook URL. Example: https://hooks.slack.com/services/T000/B000/XXXX
+  slack_api_url: 'https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK'
+
+route:
+  receiver: 'team-email'
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 3h
+  routes:
+    - receiver: 'pager'
+      matchers: ['severity = "critical"']
+
+receivers:
+  - name: 'team-email'
+    email_configs:
+      - to: 'ops@yourdomain.com'
+        send_resolved: true
+
+  - name: 'slack'
+    slack_configs:
+      - channel: '#alerts'
+        title: '{{ template "alertname" . }}'
+        text: |-
+          *Alert:* {{ .CommonAnnotations.summary }}
+          *Severity:* {{ .CommonLabels.severity }}
+          *Instance:* {{ .CommonLabels.instance }}
+        send_resolved: true
+
+  - name: 'ops-email-group'
+    email_configs:
+      - to: 'ops-team@yourdomain.com'
+        send_resolved: true
+
+  - name: 'pager'
+    email_configs:
+      - to: 'pager@yourdomain.com'
+        send_resolved: true
+
+  - name: 'null'
+    email_configs: []
+
+inhibit_rules:
+  - source_matchers: ['severity = "critical"']
+    target_matchers: ['severity = "warning"']
+    equal: ['alertname']
+
+# Note: Replace SMTP and Slack placeholders with real credentials before relying on alerts.

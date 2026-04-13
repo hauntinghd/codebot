@@ -1,0 +1,117 @@
+"use client";
+
+import { useState } from "react";
+import TopBar from "@/components/TopBar";
+import ChatPane from "@/components/ChatPane";
+import PreviewPane from "@/components/PreviewPane";
+
+type DeployTarget = "vercel" | "netlify" | "my_server";
+
+export default function Home() {
+  const [mode, setMode] = useState<"preview" | "code">("preview");
+  const [device, setDevice] = useState<"desktop" | "tablet" | "mobile">("desktop");
+  const [projectName, setProjectName] = useState("Untitled Project");
+  const [deployedUrl, setDeployedUrl] = useState<string | null>(null);
+
+  async function sendPrompt(prompt: string) {
+    const r = await fetch("/api/build/plan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt }),
+    });
+    if (!r.ok) {
+      const j = await r.json().catch(() => ({}));
+      throw new Error(j?.error || `Request failed (${r.status})`);
+    }
+  }
+
+  async function doShare() {
+    await navigator.clipboard.writeText(window.location.href);
+    alert("Share link copied.");
+  }
+
+  async function doExport() {
+    const r = await fetch("/api/project/export", { method: "POST" });
+    if (!r.ok) {
+      const j = await r.json().catch(() => ({}));
+      alert(j?.error || "Export failed.");
+      return;
+    }
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "codebot-export.zip";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function doDeploy(target: DeployTarget) {
+    const r = await fetch("/api/deploy", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ target, projectName }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      alert(j?.error || "Deploy failed.");
+      return;
+    }
+    if (j?.url) {
+      setDeployedUrl(j.url);
+      await navigator.clipboard.writeText(j.url);
+      alert("Deployed URL copied.");
+    } else {
+      alert(j?.message || "Deploy ok.");
+    }
+  }
+
+  function onNewProject() {
+    setProjectName("Untitled Project");
+    setDeployedUrl(null);
+    // If you later persist projects, this is where you'd create a new project record.
+  }
+
+  function onOpenRecent() {
+    // Wire this to your real persistence layer later.
+    alert("Recent projects (not wired yet).");
+  }
+
+  function onProfileBilling() {
+    alert("Billing (not wired yet).");
+  }
+
+  function onProfileLogout() {
+    alert("Logout (not wired yet).");
+  }
+
+  return (
+    <div className="h-screen w-screen flex flex-col cb-app-bg">
+      <TopBar
+        mode={mode}
+        device={device}
+        projectName={projectName}
+        onModeChange={setMode}
+        onDeviceChange={setDevice}
+        onNewProject={onNewProject}
+        onOpenRecent={onOpenRecent}
+        onShare={doShare}
+        onExport={doExport}
+        onDeploy={doDeploy}
+        onProfileBilling={onProfileBilling}
+        onProfileLogout={onProfileLogout}
+      />
+
+      <div className="flex-1 w-full overflow-hidden">
+        <div className="h-full w-full grid grid-cols-[360px_1fr]">
+          <div className="h-full border-r border-white/10 overflow-hidden">
+            <ChatPane onSendPrompt={sendPrompt} />
+          </div>
+          <div className="h-full overflow-hidden">
+            <PreviewPane mode={mode} device={device} deployedUrl={deployedUrl} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

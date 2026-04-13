@@ -1,0 +1,3 @@
+module.exports=[76807,a=>{"use strict";var b=a.i(2714);function c({children:a}){return(0,b.jsx)("html",{lang:"en",suppressHydrationWarning:!0,children:(0,b.jsx)("body",{className:"cb-bg cb-hide-overlays",children:(0,b.jsx)("div",{id:"__cb_app",className:"min-h-screen w-full",children:a})})})}a.s(["default",()=>c,"metadata",0,{title:"CodeBot™ Builder",description:"CodeBot™ builder UI"}])}];
+
+//# sourceMappingURL=apps_codebot-builder_app_layout_tsx_2b4a46ea._.js.map

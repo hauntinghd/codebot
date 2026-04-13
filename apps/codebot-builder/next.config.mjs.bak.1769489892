@@ -1,0 +1,44 @@
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  // App is served at https://chatbot.nyptidindustries.com/codebot/
+  basePath: "/codebot",
+
+  // Ensures all asset URLs (/_next/...) are prefixed with /codebot
+  // (Next will generate /codebot/_next/... in HTML)
+  // You’re relying on SPA-style routes; keep trailing slash consistent with your Nginx /codebot -> /codebot/ redirect
+  trailingSlash: true,
+
+  /**
+   * Monorepo safety: prevents Next from inferring the wrong workspace root
+   * (you already saw the “multiple lockfiles” warning).
+   * This points tracing to the repo root (two levels up from apps/codebot-builder).
+   */
+  outputFileTracingRoot: new URL("../../", import.meta.url).pathname,
+
+  /**
+   * API requests from the browser should be:
+   *   /codebot/api/<path>
+   *
+   * With basePath enabled, Next matches that as:
+   *   /api/<path>
+   *
+   * So the source MUST NOT include /codebot.
+   */
+  async rewrites() {
+    return [
+      {
+        source: "/api/:path*",
+        destination: "http://127.0.0.1:8000/codebot/api/:path*",
+      },
+    ];
+  },
+
+  /**
+   * Recommended: keep builds clean and avoid failing deploys from lint/type noise.
+   * If you want strict CI enforcement, remove these.
+   */
+  eslint: { ignoreDuringBuilds: true },
+  typescript: { ignoreBuildErrors: true },
+};
+
+export default nextConfig;

@@ -1,0 +1,10 @@
+var R=require("../../chunks/ssr/[turbopack]_runtime.js")("server/app/_global-error/page.js")
+R.c("server/chunks/ssr/[root-of-the-server]__79af1b42._.js")
+R.c("server/chunks/ssr/dfba8_next_dist_fccabb87._.js")
+R.c("server/chunks/ssr/dfba8_next_dist_11bc4a74._.js")
+R.c("server/chunks/ssr/[root-of-the-server]__72f25191._.js")
+R.c("server/chunks/ssr/[root-of-the-server]__6eaa8e6a._.js")
+R.c("server/chunks/ssr/dfba8_next_dist_f347a81b._.js")
+R.c("server/chunks/ssr/0da96_codebot-builder__next-internal_server_app__global-error_page_actions_fd3fb056.js")
+R.m(44983)
+module.exports=R.m(44983).exports

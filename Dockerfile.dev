@@ -1,0 +1,21 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+ENV PYTHONUNBUFFERED=1
+
+# Install system deps (if needed) and Python deps
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt || true
+# Ensure some optional runtime dependencies used in backend are available in dev image
+# (install prometheus client which backend imports)
+RUN pip install --no-cache-dir prometheus-client || true
+
+# Copy project
+COPY . .
+
+# Default port (can be overridden with APP_PORT)
+EXPOSE 3000
+
+# Run the app with uvicorn using the backend FastAPI entrypoint.
+# Uses the `APP_PORT` env var from .env.local; fall back to 3000 if absent.
+CMD ["sh", "-c", "python -m uvicorn backend.main:app --host 0.0.0.0 --port ${APP_PORT:-3000} --log-level info"]

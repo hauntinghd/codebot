@@ -1,0 +1,263 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+
+type DeployTarget = "vercel" | "netlify" | "my_server";
+
+type Props = {
+  mode: "preview" | "code";
+  setMode: (m: "preview" | "code") => void;
+
+  device: "desktop" | "tablet" | "mobile";
+  setDevice: (d: "desktop" | "tablet" | "mobile") => void;
+
+  projectName: string;
+  setProjectName: (name: string) => void;
+
+  onShare: () => Promise<void>;
+  onExport: () => Promise<void>;
+  onDeploy: (target: DeployTarget) => Promise<void>;
+};
+
+function useOutsideClose<T extends HTMLElement>(close: () => void) {
+  const ref = useRef<T | null>(null);
+  useEffect(() => {
+    function onDown(e: MouseEvent) {
+      const el = ref.current;
+      if (!el) return;
+      if (e.target instanceof Node && !el.contains(e.target)) close();
+    }
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [close]);
+  return ref;
+}
+
+function SegBtn({
+  active,
+  children,
+  onClick,
+}: {
+  active: boolean;
+  children: React.ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        "h-7 px-3 rounded-lg text-sm font-semibold leading-none",
+        "inline-flex items-center justify-center",
+        active ? "bg-white/10 text-white" : "text-white/70 hover:bg-white/5",
+      ].join(" ")}
+    >
+      {children}
+    </button>
+  );
+}
+
+function IconBtn({
+  active,
+  title,
+  emoji,
+  onClick,
+}: {
+  active: boolean;
+  title: string;
+  emoji: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      title={title}
+      onClick={onClick}
+      className={[
+        "h-9 w-9 rounded-xl border",
+        "inline-flex items-center justify-center",
+        "leading-none",
+        active ? "bg-white/10 border-white/20" : "bg-white/5 border-white/10 hover:bg-white/8",
+      ].join(" ")}
+      aria-label={title}
+    >
+      <span className="text-[15px] leading-none">{emoji}</span>
+    </button>
+  );
+}
+
+function Btn({
+  children,
+  onClick,
+  className = "",
+  title,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  className?: string;
+  title?: string;
+}) {
+  return (
+    <button
+      type="button"
+      title={title}
+      onClick={onClick}
+      className={[
+        "h-9 px-4 rounded-xl border border-white/10",
+        "inline-flex items-center justify-center gap-2",
+        "bg-white/10 hover:bg-white/15 text-white text-sm font-semibold leading-none",
+        className,
+      ].join(" ")}
+    >
+      {children}
+    </button>
+  );
+}
+
+export default function TopBar({
+  mode,
+  setMode,
+  device,
+  setDevice,
+  projectName,
+  setProjectName,
+  onShare,
+  onExport,
+  onDeploy,
+}: Props) {
+  const [projOpen, setProjOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+
+  const projRef = useOutsideClose<HTMLDivElement>(() => setProjOpen(false));
+  const profileRef = useOutsideClose<HTMLDivElement>(() => setProfileOpen(false));
+
+  return (
+    <div className="w-full h-12 px-3 flex items-center justify-between border-b border-white/10 bg-gradient-to-b from-white/5 to-transparent">
+      {/* Left */}
+      <div className="flex items-center gap-3 min-w-0">
+        <div className="h-9 w-9 rounded-xl bg-sky-500/20 border border-sky-400/30 inline-flex items-center justify-center shrink-0">
+          <span className="text-sky-200 font-semibold leading-none">✦</span>
+        </div>
+
+        <div className="text-white font-semibold leading-none">CodeBot™</div>
+
+        <div className="relative min-w-0" ref={projRef}>
+          <button
+            type="button"
+            onClick={() => setProjOpen((v) => !v)}
+            className="h-9 max-w-[260px] px-3 rounded-xl bg-white/5 border border-white/10 text-white/90 text-sm inline-flex items-center gap-2 truncate hover:bg-white/8"
+            title={projectName}
+          >
+            <span className="truncate">{projectName}</span>
+            <span className="text-white/50 leading-none">▾</span>
+          </button>
+
+          {projOpen && (
+            <div className="absolute left-0 mt-2 z-50 w-[320px] rounded-xl border border-white/10 bg-black/95 shadow-xl p-2">
+              <button
+                type="button"
+                className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/5 text-sm text-white/90"
+                onClick={() => {
+                  const name = (prompt("Project name:", projectName) || projectName).trim();
+                  setProjectName(name || projectName);
+                  setProjOpen(false);
+                }}
+              >
+                Rename project
+              </button>
+
+              <button
+                type="button"
+                className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/5 text-sm text-white/90"
+                onClick={async () => {
+                  setProjOpen(false);
+                  await onShare();
+                }}
+              >
+                Share
+              </button>
+
+              <button
+                type="button"
+                className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/5 text-sm text-white/90"
+                onClick={async () => {
+                  setProjOpen(false);
+                  await onExport();
+                }}
+              >
+                Export
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Right */}
+      <div className="flex items-center gap-2 shrink-0">
+        <div className="h-9 px-1 rounded-xl bg-white/5 border border-white/10 inline-flex items-center gap-1">
+          <SegBtn active={mode === "preview"} onClick={() => setMode("preview")}>
+            Preview
+          </SegBtn>
+          <SegBtn active={mode === "code"} onClick={() => setMode("code")}>
+            {"</>"} Code
+          </SegBtn>
+        </div>
+
+        <IconBtn active={device === "desktop"} title="Desktop" emoji="🖥️" onClick={() => setDevice("desktop")} />
+        <IconBtn active={device === "tablet"} title="Tablet" emoji="📱" onClick={() => setDevice("tablet")} />
+        <IconBtn active={device === "mobile"} title="Mobile" emoji="📳" onClick={() => setDevice("mobile")} />
+
+        <Btn title="Deploy" onClick={() => onDeploy("vercel")}>
+          Deploy
+        </Btn>
+
+        <div className="relative" ref={profileRef}>
+          <button
+            type="button"
+            onClick={() => setProfileOpen((v) => !v)}
+            className="h-9 w-9 rounded-xl bg-white/5 border border-white/10 inline-flex items-center justify-center text-white/90 hover:bg-white/8"
+            title="Profile"
+            aria-label="Profile"
+          >
+            <span className="text-[15px] leading-none">👤</span>
+          </button>
+
+          {profileOpen && (
+            <div className="absolute right-0 mt-2 z-50 w-[220px] rounded-xl border border-white/10 bg-black/95 shadow-xl p-2">
+              <button
+                type="button"
+                className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/5 text-sm text-white/90"
+                onClick={() => {
+                  setProfileOpen(false);
+                  alert("Profile (wire later)");
+                }}
+              >
+                Profile
+              </button>
+              <button
+                type="button"
+                className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/5 text-sm text-white/90"
+                onClick={() => {
+                  setProfileOpen(false);
+                  alert("Billing (wire later)");
+                }}
+              >
+                Billing
+              </button>
+              <button
+                type="button"
+                className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/5 text-sm text-white/90"
+                onClick={() => {
+                  setProfileOpen(false);
+                  alert("Logout (wire later)");
+                }}
+              >
+                Logout
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

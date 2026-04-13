@@ -1,0 +1,187 @@
+"use client";
+
+import React, { useMemo, useState } from "react";
+import AuthGate from "@/components/AuthGate";
+import BuilderTopBar from "@/components/builder/BuilderTopBar";
+import BuilderSidebar from "@/components/builder/BuilderSidebar";
+
+type DeviceMode = "desktop" | "tablet" | "mobile";
+type ViewMode = "preview" | "code";
+
+type Message = {
+  role: "user" | "assistant";
+  content: string;
+};
+
+function safeId(): string {
+  try {
+    const c: any = globalThis.crypto;
+    if (c?.randomUUID) return c.randomUUID();
+  } catch {
+    // ignore
+  }
+  return `proj_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
+export default function BuilderPage() {
+  const [device, setDevice] = useState<DeviceMode>("desktop");
+  const [view, setView] = useState<ViewMode>("preview");
+
+  const [promptDraft, setPromptDraft] = useState("");
+  const [messages, setMessages] = useState<Message[]>([]);
+
+  const [isThinking, setIsThinking] = useState(false);
+  const [projectId, setProjectId] = useState<string>(() => safeId());
+  const [activeProjectName, setActiveProjectName] = useState("Untitled Project");
+
+  const deviceFrameClass = useMemo(() => {
+    switch (device) {
+      case "mobile":
+        return "w-[390px] h-[844px]";
+      case "tablet":
+        return "w-[820px] h-[1060px]";
+      default:
+        return "w-full h-full";
+    }
+  }, [device]);
+
+  function newProjectLocal() {
+    setProjectId(safeId());
+    setActiveProjectName("Untitled Project");
+    setPromptDraft("");
+    setMessages([]);
+    setIsThinking(false);
+    setView("preview");
+    setDevice("desktop");
+  }
+
+  async function shareProject() {
+    const url = new URL(window.location.href);
+    url.pathname = "/codebot/builder/";
+    url.searchParams.set("project", projectId);
+    url.searchParams.set("name", activeProjectName);
+    const shareUrl = url.toString();
+
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+    } catch {
+      window.prompt("Copy this link:", shareUrl);
+    }
+  }
+
+  function exportProject() {
+    const payload = {
+      version: 2,
+      exported_at: new Date().toISOString(),
+      project: { id: projectId, name: activeProjectName },
+      ui_state: { view, device },
+      messages,
+    };
+
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: "application/json",
+    });
+
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+
+    const safeName =
+      activeProjectName
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9\-_]+/g, "-")
+        .replace(/-+/g, "-")
+        .replace(/(^-|-$)/g, "") || "project";
+
+    a.download = `${safeName}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.setTimeout(() => URL.revokeObjectURL(a.href), 2500);
+  }
+
+  async function runBuild() {
+    const msg = promptDraft.trim();
+    if (!msg || isThinking) return;
+
+    setPromptDraft("");
+    setMessages((prev) => [...prev, { role: "user", content: msg }]);
+    setIsThinking(true);
+
+    // placeholder behavior (safe) — replace later with real API streaming
+    setMessages((prev) => [...prev, { role: "assistant", content: "Thinking… (research + planning)" }]);
+    await new Promise((r) => setTimeout(r, 1200));
+
+    setMessages((prev) => [...prev, { role: "assistant", content: "Plan drafted. Beginning build…" }]);
+    await new Promise((r) => setTimeout(r, 900));
+
+    setMessages((prev) => [...prev, { role: "assistant", content: "Build started. Streaming progress will appear here." }]);
+
+    setIsThinking(false);
+  }
+
+  return (
+    <AuthGate redirectTo="/codebot/login" allowCookieSessionFallback={true}>
+      <div className="min-h-screen cb-bg text-white">
+        <BuilderTopBar
+          projectName={activeProjectName}
+          onProjectRename={(name) => setActiveProjectName(name)}
+          onNewProject={newProjectLocal}
+          onShareProject={shareProject}
+          onExportProject={exportProject}
+          view={view}
+          onViewChange={setView}
+          device={device}
+          onDeviceChange={setDevice}
+        />
+
+        <div className="cb-builder-shell">
+          <BuilderSidebar
+            isThinking={isThinking}
+            messages={messages}
+            promptDraft={promptDraft}
+            onPromptDraftChange={setPromptDraft}
+            onRunBuild={runBuild}
+          />
+
+          <main className="cb-main">
+            <div className="cb-stage">
+              <div className="cb-stage-head">
+                <div className="cb-stage-title">{view === "preview" ? "Preview" : "Code"}</div>
+                <div className="cb-stage-sub">
+                  {view === "preview" ? "Your website will appear here" : "Generated files will appear here"}
+                </div>
+              </div>
+
+              <div className="cb-stage-body">
+                <div className={`cb-device-frame ${deviceFrameClass}`}>
+                  {view === "preview" ? (
+                    <div className="cb-preview-empty">
+                      <div className="cb-preview-icon" aria-hidden>
+                        ⬚
+                      </div>
+                      <div className="cb-preview-h1">Your website will appear here</div>
+                      <div className="cb-preview-p">
+                        This area is output-only. The left panel is where you plan and trigger builds.
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="cb-code-empty">
+                      <div className="cb-code-block">
+                        <div className="cb-code-line w-2/3" />
+                        <div className="cb-code-line w-1/2" />
+                        <div className="cb-code-line w-5/6" />
+                        <div className="cb-code-line w-3/4" />
+                        <div className="cb-code-line w-2/5" />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </main>
+        </div>
+      </div>
+    </AuthGate>
+  );
+}

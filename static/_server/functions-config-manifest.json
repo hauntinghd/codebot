@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "functions": {
+    "/api/build/plan": {},
+    "/api/cbt/topup": {},
+    "/api/deploy": {},
+    "/api/project/export": {}
+  }
+}

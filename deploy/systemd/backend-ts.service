@@ -1,0 +1,16 @@
+[Unit]
+Description=CodeBot backend-ts (Node credits service)
+After=network.target
+
+[Service]
+Type=simple
+User=omatic657
+WorkingDirectory=/home/omatic657/aicoderbot/backend-ts
+EnvironmentFile=/home/omatic657/aicoderbot/backend-ts/.env
+ExecStart=/usr/bin/node dist/index.js
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=4096
+
+[Install]
+WantedBy=multi-user.target

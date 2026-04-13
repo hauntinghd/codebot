@@ -1,0 +1,10 @@
+# Stable Diffusion XL and Hugging Face image generation dependencies
+# For image generation with diffusers and transformers
+
+diffusers[torch]>=0.27.2
+transformers>=4.38.2
+accelerate>=0.28.0
+safetensors>=0.4.2
+Pillow>=10.2.0
+huggingface_hub>=0.23.2
+torch>=2.2.0

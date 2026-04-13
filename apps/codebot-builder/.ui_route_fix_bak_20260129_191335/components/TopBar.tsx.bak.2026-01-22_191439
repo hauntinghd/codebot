@@ -1,0 +1,215 @@
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+
+type DeployTarget = "vercel" | "netlify" | "my_server";
+
+type Props = {
+  mode: "preview" | "code";
+  setMode: (m: "preview" | "code") => void;
+
+  device: "desktop" | "tablet" | "mobile";
+  setDevice: (d: "desktop" | "tablet" | "mobile") => void;
+
+  projectName: string;
+  setProjectName: (name: string) => void;
+
+  onShare: () => void;
+  onExport: () => void;
+  onDeploy: (target: DeployTarget) => void;
+};
+
+function useOnClickOutside(ref: React.RefObject<HTMLElement>, handler: () => void) {
+  useEffect(() => {
+    function onDown(e: MouseEvent) {
+      const el = ref.current;
+      if (!el) return;
+      if (el.contains(e.target as Node)) return;
+      handler();
+    }
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [ref, handler]);
+}
+
+const BTN =
+  "appearance-none inline-flex items-center justify-center h-8 px-3 rounded-lg border text-sm leading-none select-none " +
+  "border-white/10 bg-white/5 text-white/85 hover:bg-white/10 hover:text-white transition";
+
+const BTN_ACTIVE =
+  "appearance-none inline-flex items-center justify-center h-8 px-3 rounded-lg border text-sm leading-none select-none " +
+  "border-white/15 bg-white/10 text-white transition";
+
+const ICON_BTN =
+  "appearance-none inline-flex items-center justify-center h-8 w-8 rounded-lg border leading-none select-none " +
+  "border-white/10 bg-white/5 text-white/85 hover:bg-white/10 hover:text-white transition";
+
+export default function TopBar({
+  mode,
+  setMode,
+  device,
+  setDevice,
+  projectName,
+  setProjectName,
+  onShare,
+  onExport,
+  onDeploy,
+}: Props) {
+  const [projOpen, setProjOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+
+  const projRef = useRef<HTMLDivElement>(null);
+  const profileRef = useRef<HTMLDivElement>(null);
+
+  useOnClickOutside(projRef, () => setProjOpen(false));
+  useOnClickOutside(profileRef, () => setProfileOpen(false));
+
+  const deviceLabel = useMemo(() => {
+    if (device === "desktop") return "Desktop";
+    if (device === "tablet") return "Tablet";
+    return "Mobile";
+  }, [device]);
+
+  return (
+    <div className="h-12 px-3 flex items-center justify-between gap-3 border-b border-white/10 bg-white/[0.03]">
+      {/* Left */}
+      <div className="flex items-center gap-2 min-w-0">
+        <div className="h-8 w-8 rounded-xl bg-gradient-to-br from-cyan-400/70 to-violet-400/70 shrink-0" />
+        <div className="font-semibold tracking-wide text-white leading-none">CodeBot™</div>
+
+        <div className="relative ml-1" ref={projRef}>
+          <button
+            type="button"
+            className={`${BTN} max-w-[260px] truncate`}
+            title={projectName}
+            onClick={() => setProjOpen((v) => !v)}
+          >
+            <span className="truncate">{projectName}</span>
+            <span className="ml-2 text-white/50">▾</span>
+          </button>
+
+          {projOpen && (
+            <div className="absolute left-0 top-[calc(100%+8px)] z-50 w-[320px] rounded-xl border border-white/10 bg-black/95 shadow-xl p-2">
+              <button
+                className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/5 text-sm text-white/85"
+                onClick={() => {
+                  const name = prompt("Project name:", projectName) || projectName;
+                  setProjectName(name.trim() || projectName);
+                  setProjOpen(false);
+                }}
+                type="button"
+              >
+                Rename project
+              </button>
+
+              <button
+                className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/5 text-sm text-white/85"
+                onClick={() => {
+                  onShare();
+                  setProjOpen(false);
+                }}
+                type="button"
+              >
+                Share
+              </button>
+
+              <button
+                className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/5 text-sm text-white/85"
+                onClick={() => {
+                  onExport();
+                  setProjOpen(false);
+                }}
+                type="button"
+              >
+                Export (.zip)
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Right */}
+      <div className="flex items-center gap-2 shrink-0">
+        {/* Mode */}
+        <div className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 p-0.5">
+          <button
+            type="button"
+            className={mode === "preview" ? BTN_ACTIVE : BTN}
+            onClick={() => setMode("preview")}
+          >
+            Preview
+          </button>
+          <button
+            type="button"
+            className={mode === "code" ? BTN_ACTIVE : BTN}
+            onClick={() => setMode("code")}
+          >
+            {"</>"} Code
+          </button>
+        </div>
+
+        {/* Device */}
+        <button type="button" className={ICON_BTN} title={`Device: ${deviceLabel}`} onClick={() => {
+          // cycle devices with one click (simple + robust)
+          setDevice(device === "desktop" ? "tablet" : device === "tablet" ? "mobile" : "desktop");
+        }}>
+          {device === "desktop" ? "🖥️" : device === "tablet" ? "📱" : "📳"}
+        </button>
+
+        {/* Deploy */}
+        <div className="relative">
+          <button type="button" className={BTN_ACTIVE} onClick={() => onDeploy("vercel")}>
+            Deploy
+          </button>
+        </div>
+
+        {/* Profile */}
+        <div className="relative" ref={profileRef}>
+          <button
+            type="button"
+            className={ICON_BTN}
+            title="Profile"
+            onClick={() => setProfileOpen((v) => !v)}
+          >
+            👤
+          </button>
+
+          {profileOpen && (
+            <div className="absolute right-0 top-[calc(100%+8px)] z-50 w-[220px] rounded-xl border border-white/10 bg-black/95 shadow-xl p-2">
+              <button
+                className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/5 text-sm text-white/85"
+                onClick={() => {
+                  // wire later
+                  setProfileOpen(false);
+                }}
+                type="button"
+              >
+                Profile
+              </button>
+              <button
+                className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/5 text-sm text-white/85"
+                onClick={() => {
+                  // wire later
+                  setProfileOpen(false);
+                }}
+                type="button"
+              >
+                Billing
+              </button>
+              <button
+                className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/5 text-sm text-white/85"
+                onClick={() => {
+                  // wire later
+                  setProfileOpen(false);
+                }}
+                type="button"
+              >
+                Logout
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
