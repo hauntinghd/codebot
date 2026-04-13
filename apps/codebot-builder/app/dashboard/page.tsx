@@ -10,39 +10,44 @@ type UserInfo = { id: string; email: string; is_admin: boolean; plan?: string; c
 const MODELS = [
   { id: "claude-opus-4-6",   label: "Claude Opus 4.6",   tier: "frontier" },
   { id: "gpt-5",             label: "GPT-5",              tier: "frontier" },
+  { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6",  tier: "frontier" },
   { id: "claude-sonnet-4.5", label: "Claude Sonnet 4.5",  tier: "premium"  },
   { id: "gpt-4.1",           label: "GPT-4.1",            tier: "premium"  },
   { id: "deepseek-v3.1",     label: "DeepSeek V3.1",      tier: "premium"  },
-  { id: "gemini-2.5-flash",  label: "Gemini Flash",       tier: "fast"     },
+  { id: "gemini-2.5-flash",  label: "Gemini 2.5 Flash",   tier: "fast"     },
   { id: "claude-haiku-4.5",  label: "Claude Haiku 4.5",   tier: "fast"     },
+  { id: "gpt-5-mini",        label: "GPT-5 Mini",         tier: "fast"     },
+  { id: "gemini-2.5-flash-lite", label: "Gemini Flash Lite", tier: "fast"  },
+  { id: "gpt-5-nano",        label: "GPT-5 Nano",         tier: "fast"     },
 ];
 
 const TIER_COLORS: Record<string, string> = { frontier: "#c084fc", premium: "#60a5fa", fast: "#86efac" };
+const TIER_LABELS: Record<string, string> = { frontier: "Frontier", premium: "Premium", fast: "Fast" };
 
 export default function DashboardPage() {
   const [user, setUser] = useState<UserInfo | null>(null);
   const [loading, setLoading] = useState(true);
+  const [cbt, setCbt] = useState<number | null>(null);
   const [prompt, setPrompt] = useState("");
   const [selectedModel, setSelectedModel] = useState("claude-sonnet-4.5");
   const [modelOpen, setModelOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const modelRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const load = useCallback(async () => {
     const token = getToken();
-    if (!token) { window.location.assign(`${BASE}/login`); return; }
+    if (!token) { window.location.assign(`${BASE}/login/`); return; }
     try {
       const data = await apiFetch<UserInfo>("/me");
       setUser(data);
-    } catch { clearTokens(); window.location.assign(`${BASE}/login`); }
+      setCbt(data.is_admin ? -1 : (data.credits_remaining ?? 0));
+    } catch { clearTokens(); window.location.assign(`${BASE}/login/`); }
     finally { setLoading(false); }
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
-  // Close dropdowns on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (modelRef.current && !modelRef.current.contains(e.target as Node)) setModelOpen(false);
@@ -52,14 +57,17 @@ export default function DashboardPage() {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  const logout = () => { clearTokens(); window.location.assign(`${BASE}/login`); };
+  const logout = () => { clearTokens(); window.location.assign(`${BASE}/login/`); };
 
   const goBuilder = (mode: "build" | "plan") => {
-    const params = new URLSearchParams({ prompt, model: selectedModel, mode });
+    const params = new URLSearchParams();
+    if (prompt.trim()) params.set("prompt", prompt.trim());
+    params.set("model", selectedModel);
+    params.set("mode", mode);
     window.location.assign(`${BASE}/builder/?${params.toString()}`);
   };
 
-  const currentModel = MODELS.find(m => m.id === selectedModel) || MODELS[2];
+  const currentModel = MODELS.find(m => m.id === selectedModel) || MODELS[3];
 
   if (loading) return (
     <div className="d-page"><div className="d-load"><div className="d-spin" /></div><style>{CSS}</style></div>
@@ -73,6 +81,11 @@ export default function DashboardPage() {
       <header className="d-top">
         <div className="d-logo"><span className="d-dot" />CodeBot</div>
         <div className="d-top-right">
+          {/* CBT counter */}
+          <div className="d-cbt">
+            <span className="d-cbt-num">{cbt === -1 ? "\u221E" : (cbt ?? 0).toLocaleString()}</span>
+            <span className="d-cbt-label">CBT</span>
+          </div>
           <button className="d-signout" onClick={logout}>Sign Out</button>
           <div className="d-menu-wrap" ref={menuRef}>
             <button className="d-hamburger" onClick={() => setMenuOpen(v => !v)}>
@@ -80,14 +93,10 @@ export default function DashboardPage() {
             </button>
             {menuOpen && (
               <div className="d-dropdown d-dropdown-menu">
-                {[
-                  { href: `${BASE}/account/`, label: "Account" },
-                  { href: `${BASE}/account/upgrade/`, label: "Upgrade / Billing" },
-                  { href: `${BASE}/settings/`, label: "Settings" },
-                  { href: `${BASE}/terms/`, label: "Terms of Service" },
-                ].map(item => (
-                  <a key={item.href} href={item.href} className="d-drop-item">{item.label}</a>
-                ))}
+                <a href={`${BASE}/account/`} className="d-drop-item">Account</a>
+                <a href={`${BASE}/account/upgrade/`} className="d-drop-item">Upgrade / Billing</a>
+                <a href={`${BASE}/settings/`} className="d-drop-item">Settings</a>
+                <a href={`${BASE}/terms/`} className="d-drop-item">Terms of Service</a>
               </div>
             )}
           </div>
@@ -97,10 +106,10 @@ export default function DashboardPage() {
       {/* Hero */}
       <div className="d-hero">
         <h1 className="d-headline">
-          What will you <em>build</em> today?
+          What will you <span className="d-grad">build</span> today?
         </h1>
         <p className="d-sub">
-          Prompt, preview, and deploy full-stack apps with AI.
+          Code, deploy, and ship production apps with frontier AI.
         </p>
       </div>
 
@@ -108,7 +117,6 @@ export default function DashboardPage() {
       <div className="d-prompt-wrap">
         <div className="d-prompt-card">
           <textarea
-            ref={inputRef}
             className="d-textarea"
             placeholder="Describe what you want to build..."
             value={prompt}
@@ -128,10 +136,11 @@ export default function DashboardPage() {
                 <div className="d-dropdown d-dropdown-model">
                   {(["frontier", "premium", "fast"] as const).map(tier => (
                     <div key={tier}>
-                      <div className="d-drop-header" style={{ color: TIER_COLORS[tier] }}>{tier.toUpperCase()}</div>
+                      <div className="d-drop-tier" style={{ color: TIER_COLORS[tier] }}>{TIER_LABELS[tier]}</div>
                       {MODELS.filter(m => m.tier === tier).map(m => (
-                        <button key={m.id} className={`d-drop-item ${m.id === selectedModel ? "active" : ""}`}
+                        <button key={m.id} className={`d-drop-item${m.id === selectedModel ? " active" : ""}`}
                           onClick={() => { setSelectedModel(m.id); setModelOpen(false); }}>
+                          <span className="d-tier-dot-sm" style={{ background: TIER_COLORS[m.tier] }} />
                           {m.label}
                           {m.id === selectedModel && <span className="d-check">&#10003;</span>}
                         </button>
@@ -142,36 +151,19 @@ export default function DashboardPage() {
               )}
             </div>
 
-            {/* Plan button */}
-            <button className="d-plan-btn" onClick={() => prompt.trim() && goBuilder("plan")}>
+            <div style={{ flex: 1 }} />
+
+            <button className="d-plan-btn" onClick={() => goBuilder("plan")}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
               Plan
             </button>
 
-            {/* Build button */}
-            <button className="d-build-btn" onClick={() => prompt.trim() && goBuilder("build")} disabled={!prompt.trim()}>
+            <button className="d-build-btn" onClick={() => goBuilder("build")}>
               Build now &#9654;
             </button>
           </div>
         </div>
       </div>
-
-      {/* Quick stats */}
-      {user && (
-        <div className="d-stats-row">
-          <div className="d-stat">
-            <span className="d-stat-val">{user.is_admin ? "Unlimited" : user.credits_remaining ?? 0}</span>
-            <span className="d-stat-label">CBT Balance</span>
-          </div>
-          <div className="d-stat">
-            <span className="d-stat-val">38</span>
-            <span className="d-stat-label">AI Models</span>
-          </div>
-          <div className="d-stat">
-            <span className="d-stat-val">{user.plan === "none" ? "Free" : user.plan || "Free"}</span>
-            <span className="d-stat-label">Plan</span>
-          </div>
-        </div>
-      )}
 
       <style>{CSS}</style>
     </div>
@@ -200,7 +192,6 @@ const CSS = `
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  /* Top bar */
   .d-top {
     position: relative; z-index: 10; width: 100%; max-width: 900px;
     display: flex; align-items: center; justify-content: space-between;
@@ -214,6 +205,15 @@ const CSS = `
   }
   .d-dot { width: 6px; height: 6px; border-radius: 50%; background: #818cf8; }
   .d-top-right { display: flex; align-items: center; gap: 8px; }
+
+  .d-cbt {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 14px; border-radius: 8px;
+    background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06);
+  }
+  .d-cbt-num { font-size: 15px; font-weight: 700; color: #e2e8f0; font-variant-numeric: tabular-nums; }
+  .d-cbt-label { font-size: 11px; font-weight: 600; color: rgba(148,163,184,0.5); letter-spacing: 0.05em; }
+
   .d-signout {
     height: 36px; padding: 0 16px; border-radius: 8px;
     border: 1px solid rgba(239,68,68,0.25); background: rgba(239,68,68,0.06);
@@ -228,26 +228,24 @@ const CSS = `
   .d-hamburger:hover { background: rgba(255,255,255,0.1); }
   .d-menu-wrap { position: relative; }
 
-  /* Hero */
   .d-hero {
     position: relative; z-index: 1; text-align: center;
-    margin-top: 60px; padding: 0 24px;
+    margin-top: 80px; padding: 0 24px;
   }
   .d-headline {
-    font-size: 42px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.15;
+    font-size: 44px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.15;
     color: #f1f5f9;
   }
-  .d-headline em {
-    font-style: italic;
+  .d-grad {
     background: linear-gradient(135deg, #818cf8, #06b6d4);
     -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    font-style: italic;
   }
-  .d-sub { margin-top: 12px; font-size: 16px; color: rgba(148,163,184,0.65); }
+  .d-sub { margin-top: 12px; font-size: 16px; color: rgba(148,163,184,0.6); }
 
-  /* Prompt */
   .d-prompt-wrap {
     position: relative; z-index: 1; width: 100%; max-width: 680px;
-    margin-top: 40px; padding: 0 24px;
+    margin-top: 48px; padding: 0 24px;
   }
   .d-prompt-card {
     border-radius: 16px; border: 1px solid rgba(255,255,255,0.08);
@@ -257,7 +255,7 @@ const CSS = `
   .d-textarea {
     width: 100%; padding: 20px; border: none; background: transparent;
     color: #e2e8f0; font-size: 15px; font-family: inherit; resize: none;
-    outline: none; min-height: 80px;
+    outline: none; min-height: 90px;
   }
   .d-textarea::placeholder { color: rgba(148,163,184,0.35); }
 
@@ -266,55 +264,53 @@ const CSS = `
     padding: 12px 16px; border-top: 1px solid rgba(255,255,255,0.05);
   }
 
-  /* Model picker */
   .d-model-wrap { position: relative; }
   .d-model-btn {
     display: flex; align-items: center; gap: 6px;
     height: 34px; padding: 0 12px; border-radius: 8px; border: none;
     background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.8);
-    font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit;
-    white-space: nowrap;
+    font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; white-space: nowrap;
   }
   .d-model-btn:hover { background: rgba(255,255,255,0.1); }
   .d-tier-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .d-tier-dot-sm { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
   .d-caret { font-size: 8px; opacity: 0.5; margin-left: 2px; }
 
-  /* Plan button */
   .d-plan-btn {
     height: 34px; padding: 0 14px; border-radius: 8px;
     border: 1px solid rgba(255,255,255,0.1); background: transparent;
     color: rgba(255,255,255,0.7); font-size: 13px; font-weight: 500;
-    cursor: pointer; font-family: inherit; margin-left: auto;
+    cursor: pointer; font-family: inherit;
+    display: flex; align-items: center; gap: 5px;
   }
   .d-plan-btn:hover { background: rgba(255,255,255,0.06); }
 
-  /* Build button */
   .d-build-btn {
     height: 38px; padding: 0 22px; border-radius: 10px; border: none;
-    background: linear-gradient(135deg, #2563eb, #1d4ed8); color: white;
+    background: linear-gradient(135deg, #6366f1, #4f46e5); color: white;
     font-size: 14px; font-weight: 700; cursor: pointer; font-family: inherit;
     display: flex; align-items: center; gap: 6px;
-    box-shadow: 0 4px 12px rgba(37,99,235,0.3);
+    box-shadow: 0 4px 14px rgba(99,102,241,0.3);
     transition: all 0.15s;
   }
-  .d-build-btn:hover:not(:disabled) { background: linear-gradient(135deg, #3b82f6, #2563eb); transform: translateY(-1px); }
-  .d-build-btn:disabled { opacity: 0.4; cursor: default; }
+  .d-build-btn:hover { background: linear-gradient(135deg, #818cf8, #6366f1); transform: translateY(-1px); }
 
-  /* Dropdowns */
   .d-dropdown {
     position: absolute; z-index: 100; border-radius: 12px;
     background: rgba(16,20,28,0.98); border: 1px solid rgba(255,255,255,0.08);
-    box-shadow: 0 16px 48px rgba(0,0,0,0.6); overflow: hidden;
-    min-width: 180px;
+    box-shadow: 0 16px 48px rgba(0,0,0,0.6); overflow-y: auto;
+    max-height: 360px;
   }
-  .d-dropdown-model { bottom: 42px; left: 0; min-width: 220px; }
-  .d-dropdown-menu { top: 42px; right: 0; min-width: 200px; }
-  .d-drop-header {
-    padding: 8px 14px 4px; font-size: 10px; font-weight: 700;
+  .d-dropdown-model { bottom: 42px; left: 0; min-width: 240px; }
+  .d-dropdown-menu { top: 42px; right: 0; min-width: 200px; padding: 6px 0; }
+  .d-drop-tier {
+    padding: 10px 14px 4px; font-size: 10px; font-weight: 700;
     letter-spacing: 0.06em; text-transform: uppercase;
+    border-top: 1px solid rgba(255,255,255,0.04);
   }
+  .d-drop-tier:first-child { border-top: none; }
   .d-drop-item {
-    display: flex; align-items: center; width: 100%;
+    display: flex; align-items: center; gap: 8px; width: 100%;
     padding: 8px 14px; border: none; background: transparent;
     color: rgba(255,255,255,0.8); font-size: 13px; font-weight: 500;
     cursor: pointer; text-align: left; font-family: inherit;
@@ -322,19 +318,9 @@ const CSS = `
   .d-drop-item:hover, .d-drop-item.active { background: rgba(255,255,255,0.06); }
   .d-check { margin-left: auto; color: #86efac; font-size: 12px; }
 
-  /* Stats */
-  .d-stats-row {
-    position: relative; z-index: 1;
-    display: flex; gap: 32px; margin-top: 48px;
-    padding: 0 24px;
-  }
-  .d-stat { display: flex; flex-direction: column; align-items: center; gap: 4px; }
-  .d-stat-val { font-size: 20px; font-weight: 700; color: #e2e8f0; }
-  .d-stat-label { font-size: 12px; color: rgba(148,163,184,0.45); }
-
   @media (max-width: 640px) {
     .d-headline { font-size: 28px; }
     .d-prompt-bar { flex-wrap: wrap; }
-    .d-stats-row { gap: 20px; }
+    .d-cbt { display: none; }
   }
 `;

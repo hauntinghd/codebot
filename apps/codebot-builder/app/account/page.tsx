@@ -135,7 +135,7 @@ export default function AccountBillingPage() {
               <div style={st.sub}>Pay for what you use. No fixed packs. Credits consumed per build.</div>
             </div>
             <div style={st.btnGroup}>
-              <a href={`${BASE}/builder`} style={st.btnGhost}>← Back to Builder</a>
+              <a href={`${BASE}/dashboard/`} style={st.btnGhost}>← Back to Dashboard</a>
               <button type="button" style={st.btnGhost} onClick={loadCredits} disabled={busy !== ""}>Refresh</button>
               <button type="button" style={st.btnPrimary} onClick={openPortal} disabled={busy === "portal"}>
                 {busy === "portal" ? "Opening..." : "Open Stripe Portal"}

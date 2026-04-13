@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import Depends, FastAPI, Request
 
-from backend.auth import require_subscribed
+from backend.auth import current_user
 from backend.config import API_PREFIX
 from backend.credits import check_and_reset_credits, get_user_credits
 from backend.database import db
@@ -19,7 +19,7 @@ def register_routes(api: FastAPI):
     @api.get(f"{API_PREFIX}/credits")
     async def get_credits(
         request: Request,
-        u: sqlite3.Row = Depends(require_subscribed),
+        u: sqlite3.Row = Depends(current_user),
     ) -> Dict[str, Any]:
         user_id = str(u["id"])
 

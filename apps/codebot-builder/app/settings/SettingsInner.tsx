@@ -82,11 +82,14 @@ export default function SettingsPage() {
     setPageErr(msg);
   }
 
+  function _tok(): string | null { try { return localStorage.getItem("access_token") || localStorage.getItem("codebot_access_token") || null; } catch { return null; } }
+  function _authHeaders(): Record<string, string> { const t = _tok(); return t ? { Authorization: `Bearer ${t}`, Accept: "application/json" } : { Accept: "application/json" }; }
+
   async function loadMe() {
     setPageErr(null);
-    const res = await fetch(`${BASE}/api/me`, { method: "GET", credentials: "include" });
+    const res = await fetch(`${BASE}/api/me`, { method: "GET", credentials: "include", headers: _authHeaders() });
     if (res.status === 401) {
-      window.location.assign(`${BASE}/login`);
+      window.location.assign(`${BASE}/login/`);
       return;
     }
     if (!res.ok) {
@@ -171,7 +174,7 @@ export default function SettingsPage() {
     setPageErr(null);
     setPageOk(null);
 
-    const res = await fetch(`${BASE}/api/api-key`, { method: "GET", credentials: "include" });
+    const res = await fetch(`${BASE}/api/api-key`, { method: "GET", credentials: "include", headers: _authHeaders() });
     if (res.status === 401) {
       window.location.assign(`${BASE}/login`);
       return;
@@ -225,7 +228,7 @@ export default function SettingsPage() {
 
     setDeletingKey(true);
     try {
-      const res = await fetch(`${BASE}/api/api-key`, { method: "DELETE", credentials: "include" });
+      const res = await fetch(`${BASE}/api/api-key`, { method: "DELETE", credentials: "include", headers: _authHeaders() });
 
       if (res.status === 401) {
         window.location.assign(`${BASE}/login`);
@@ -283,7 +286,7 @@ export default function SettingsPage() {
   };
 
   return (
-    <AuthGate redirectTo="/login" allowCookieSessionFallback={true}>
+    <>
       <div className="min-h-screen cb-bg text-white">
         <div className="mx-auto max-w-6xl px-8 py-10">
           {/* header */}
@@ -529,6 +532,6 @@ export default function SettingsPage() {
           </div>
         </div>
       </div>
-    </AuthGate>
+    </>
   );
 }
