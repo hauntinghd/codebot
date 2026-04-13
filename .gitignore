@@ -43,3 +43,6 @@ _releases/
 
 # Temp files
 tmp_*
+*.bak.*
+.env.bak*
+.wrangler/

@@ -13,6 +13,7 @@ from fastapi import Depends, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
 
 from backend.auth import (
+    _pbkdf2_hash,
     _pbkdf2_verify,
     clear_session,
     create_refresh_session,
