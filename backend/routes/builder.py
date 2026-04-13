@@ -580,7 +580,20 @@ async def list_models(request: Request):
 
 @router.post(f"{API_PREFIX}/builder/run")
 async def builder_run(request: Request):
-    uid = get_session_user_id(request)
+    # Try Bearer token first (API calls), then session cookie (web UI)
+    uid = None
+    auth_header = request.headers.get("authorization", "")
+    if auth_header.startswith("Bearer "):
+        try:
+            from backend.auth import jwt_decode
+            from backend.config import JWT_SECRET
+            payload = jwt_decode(auth_header[7:], JWT_SECRET)
+            if payload.get("type") == "access":
+                uid = str(payload.get("sub", "")) or None
+        except Exception:
+            pass
+    if not uid:
+        uid = get_session_user_id(request)
     if not uid:
         return JSONResponse({"detail": "Not authenticated"}, status_code=401)
 
