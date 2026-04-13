@@ -448,17 +448,23 @@ export default function BuilderTopBar(props: Props) {
               <div style={{ padding: "8px 12px 6px", fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.35)", letterSpacing: "0.04em", textTransform: "uppercase" }}>
                 Deploy to
               </div>
-              <button type="button" role="menuitem" style={S.dropItem} onClick={() => { setDeployOpen(false); onDeploy?.("vm", customDomain || undefined); }}>
-                <svg style={S.dropIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="2" y="2" width="20" height="8" rx="2" ry="2" /><rect x="2" y="14" width="20" height="8" rx="2" ry="2" /><line x1="6" y1="6" x2="6.01" y2="6" /><line x1="6" y1="18" x2="6.01" y2="18" />
-                </svg>
-                NYPTID Server (VM)
-              </button>
               <button type="button" role="menuitem" style={S.dropItem} onClick={() => { setDeployOpen(false); onDeploy?.("netlify", customDomain || undefined); }}>
                 <svg style={S.dropIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
                   <path d="M12 2L2 19.5h20L12 2z" /><path d="M12 2v17.5" />
                 </svg>
                 Netlify
+              </button>
+              <button type="button" role="menuitem" style={S.dropItem} onClick={() => { setDeployOpen(false); onDeploy?.("vercel", customDomain || undefined); }}>
+                <svg style={S.dropIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 2l10 18H2L12 2z" />
+                </svg>
+                Vercel
+              </button>
+              <button type="button" role="menuitem" style={{...S.dropItem, opacity: 0.4, cursor: "default"}} disabled>
+                <svg style={S.dropIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="2" y="2" width="20" height="8" rx="2" ry="2" /><rect x="2" y="14" width="20" height="8" rx="2" ry="2" /><line x1="6" y1="6" x2="6.01" y2="6" /><line x1="6" y1="18" x2="6.01" y2="18" />
+                </svg>
+                NYPTID Server — Coming Soon
               </button>
               <div style={{ padding: "6px 12px 8px", borderTop: "1px solid rgba(255,255,255,0.06)", marginTop: 4 }}>
                 <div style={{ fontSize: 10, fontWeight: 600, color: "rgba(255,255,255,0.3)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 4 }}>Custom Domain (optional)</div>

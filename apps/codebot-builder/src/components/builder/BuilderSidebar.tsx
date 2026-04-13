@@ -7,21 +7,29 @@ type BuildMode = "build" | "ask" | "plan";
 
 const BASE = "/codebot";
 
-type ModelEntry = { id: string; label: string; tier: "free" | "pro"; group: string; disabled?: boolean };
+type ModelEntry = { id: string; label: string; tier: "free" | "pro"; group: string; disabled?: boolean; cost?: string };
 
 const MODELS: ModelEntry[] = [
-  { id: "grok-3-mini",       label: "Grok 3 Mini",       tier: "free", group: "xAI — Free" },
-  { id: "grok-3",            label: "Grok 3",             tier: "free", group: "xAI — Free" },
-  { id: "grok-4-1-fast-reasoning",     label: "Grok 4.1 Fast Reasoning",     tier: "pro", group: "xAI Grok" },
-  { id: "grok-4-1-fast-non-reasoning", label: "Grok 4.1 Fast Non-Reasoning", tier: "pro", group: "xAI Grok" },
-  { id: "grok-code-fast-1",            label: "Grok Code Fast 1",            tier: "pro", group: "xAI Grok" },
-  { id: "grok-4-fast-reasoning",       label: "Grok 4 Fast Reasoning",       tier: "pro", group: "xAI Grok" },
-  { id: "grok-4-fast-non-reasoning",   label: "Grok 4 Fast Non-Reasoning",   tier: "pro", group: "xAI Grok" },
-  { id: "claude-opus-4-6",             label: "Claude Opus 4.6",             tier: "pro", group: "Claude — Coming Soon", disabled: true },
-  { id: "claude-sonnet-4-6",           label: "Claude Sonnet 4.6",           tier: "pro", group: "Claude — Coming Soon", disabled: true },
-  { id: "claude-haiku-4-5",            label: "Claude Haiku 4.5",            tier: "pro", group: "Claude — Coming Soon", disabled: true },
-  { id: "gpt-5.3-codex",              label: "GPT-5.3 Codex",               tier: "pro", group: "OpenAI — Coming Soon", disabled: true },
-  { id: "gpt-5.2",                    label: "GPT-5.2",                     tier: "pro", group: "OpenAI — Coming Soon", disabled: true },
+  // Coding — Frontier
+  { id: "claude-opus-4-6",    label: "Claude Opus 4.6",     tier: "pro",  group: "Coding — Frontier",  cost: "$0.016/1k" },
+  { id: "gpt-5",              label: "GPT-5",                tier: "pro",  group: "Coding — Frontier",  cost: "$0.009/1k" },
+  { id: "claude-sonnet-4-6",  label: "Claude Sonnet 4.6",   tier: "pro",  group: "Coding — Frontier",  cost: "$0.009/1k" },
+  { id: "claude-sonnet-4.5",  label: "Claude Sonnet 4.5",   tier: "pro",  group: "Coding — Premium",   cost: "$0.009/1k" },
+  { id: "gpt-4.1",            label: "GPT-4.1",              tier: "pro",  group: "Coding — Premium",   cost: "$0.007/1k" },
+  { id: "deepseek-v3.1",      label: "DeepSeek V3.1",       tier: "free", group: "Coding — Premium",   cost: "$0.001/1k" },
+  // Reasoning
+  { id: "o3",                  label: "OpenAI o3",            tier: "pro",  group: "Reasoning",          cost: "$0.007/1k" },
+  { id: "gemini-2.5-pro",     label: "Gemini 2.5 Pro",      tier: "pro",  group: "Reasoning",          cost: "$0.008/1k" },
+  { id: "deepseek-r1",        label: "DeepSeek R1",          tier: "free", group: "Reasoning",          cost: "$0.002/1k" },
+  // Thinking
+  { id: "claude-sonnet-4.5-thinking", label: "Claude 4.5 Thinking", tier: "pro", group: "Thinking",    cost: "$0.009/1k" },
+  { id: "gemini-2.5-pro-thinking",    label: "Gemini Pro Thinking", tier: "pro", group: "Thinking",    cost: "$0.008/1k" },
+  // Fast / Cheap
+  { id: "gemini-2.5-flash",       label: "Gemini 2.5 Flash",    tier: "free", group: "Fast",           cost: "$0.002/1k" },
+  { id: "claude-haiku-4.5",       label: "Claude Haiku 4.5",    tier: "free", group: "Fast",           cost: "$0.003/1k" },
+  { id: "gpt-5-mini",             label: "GPT-5 Mini",           tier: "free", group: "Fast",           cost: "$0.002/1k" },
+  { id: "gemini-2.5-flash-lite",  label: "Gemini Flash Lite",   tier: "free", group: "Fast",           cost: "$0.0003/1k" },
+  { id: "gpt-5-nano",             label: "GPT-5 Nano",           tier: "free", group: "Fast",           cost: "$0.0003/1k" },
 ];
 
 const MODE_META: Record<BuildMode, { label: string; desc: string; icon: string }> = {
@@ -121,7 +129,7 @@ export default function BuilderSidebar(props: {
 }) {
   const {
     isThinking, messages, promptDraft, onPromptDraftChange, onRunBuild, onCancel,
-    mode = "build", onModeChange, selectedModel = "grok-3-mini", onModelChange,
+    mode = "build", onModeChange, selectedModel = "claude-sonnet-4.5", onModelChange,
     onImplementPlan,
   } = props;
 

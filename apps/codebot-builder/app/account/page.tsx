@@ -13,13 +13,20 @@ type CreditsOut = {
   purchasedCbtRemaining?: number;
 };
 
+function _getToken(): string | null {
+  try { return localStorage.getItem("access_token") || localStorage.getItem("codebot_access_token") || null; } catch { return null; }
+}
+
 async function apiJson<T>(
   path: string,
   init?: RequestInit
 ): Promise<{ ok: boolean; status: number; data?: T; text?: string }> {
+  const token = _getToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json", ...(init?.headers as Record<string, string> || {}) };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
   const res = await fetch(`${API_BASE}${path}`, {
     credentials: "include",
-    headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
+    headers,
     ...init,
   });
   const ct = res.headers.get("content-type") || "";
@@ -84,7 +91,7 @@ export default function AccountBillingPage() {
 
   async function loadCredits() {
     setError("");
-    const r = await apiJson<CreditsOut>("/credits/balance");
+    const r = await apiJson<CreditsOut>("/credits");
     if (r.ok && r.data) setCredits(r.data);
     if (!r.ok) setError(`Couldn't load credits (HTTP ${r.status}).`);
     setLoaded(true);

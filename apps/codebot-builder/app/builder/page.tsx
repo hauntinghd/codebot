@@ -137,7 +137,7 @@ export default function BuilderPage() {
   const [promptDraft, setPromptDraft] = useState<string>("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [buildMode, setBuildMode] = useState<"build" | "ask" | "plan">("build");
-  const [selectedModel, setSelectedModel] = useState<string>("grok-3-mini");
+  const [selectedModel, setSelectedModel] = useState<string>("claude-sonnet-4.5");
 
   const [isThinking, setIsThinking] = useState(false);
   const [projectId, setProjectId] = useState<string>(() => safeId());

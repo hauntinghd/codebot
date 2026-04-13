@@ -10,8 +10,14 @@ type PortalOut = { url: string };
 type CreditsOut = { availableCbt: number; monthlyCbtRemaining?: number; purchasedCbtRemaining?: number };
 type MeOut = { id: string; email: string; is_admin: boolean; subscription_status?: string; plan?: string; current_period_end?: number; credits_remaining?: number | null; display_name?: string | null };
 
+function _getToken(): string | null {
+  try { return localStorage.getItem("access_token") || localStorage.getItem("codebot_access_token") || null; } catch { return null; }
+}
 async function apiJson<T>(path: string, init?: RequestInit): Promise<{ ok: boolean; status: number; data?: T; text?: string }> {
-  const res = await fetch(`${API_BASE}${path}`, { credentials: "include", headers: { "Content-Type": "application/json", ...(init?.headers || {}) }, ...init });
+  const token = _getToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json", ...(init?.headers as Record<string, string> || {}) };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`${API_BASE}${path}`, { credentials: "include", headers, ...init });
   const ct = res.headers.get("content-type") || "";
   if (ct.includes("application/json")) { const data = (await res.json().catch(() => undefined)) as T | undefined; return { ok: res.ok, status: res.status, data }; }
   return { ok: res.ok, status: res.status, text: await res.text().catch(() => "") };
@@ -69,7 +75,7 @@ export default function UpgradePage() {
   const [me, setMe] = useState<MeOut | null>(null);
   const [loaded, setLoaded] = useState(false);
 
-  async function loadCredits() { const res = await apiJson<CreditsOut>("/credits/balance"); if (res.ok && res.data) setCredits(res.data); setLoaded(true); }
+  async function loadCredits() { const res = await apiJson<CreditsOut>("/credits"); if (res.ok && res.data) setCredits(res.data); setLoaded(true); }
   async function loadMe() { const who = await apiJson<MeOut>("/auth/whoami"); if (who.ok && who.data) { setMe(who.data); return; } const prof = await apiJson<MeOut>("/profile"); if (prof.ok && prof.data) { setMe(prof.data); return; } setMe(null); }
   async function refreshAll() { await Promise.all([loadMe(), loadCredits()]); }
 
