@@ -54,7 +54,7 @@ export default function LoginPage() {
           const regData = await regRes.json().catch(() => null);
           if (regRes.ok && regData?.access_token) {
             storeTokens(regData.access_token, regData.refresh_token);
-            window.location.assign("/codebot/");
+            window.location.assign("/codebot/dashboard");
             return;
           }
           // If email already registered, try reset-owner for admin emails
@@ -76,7 +76,7 @@ export default function LoginPage() {
               const retryData = await retryRes.json().catch(() => null);
               if (retryRes.ok && retryData?.access_token) {
                 storeTokens(retryData.access_token, retryData.refresh_token);
-                window.location.assign("/codebot/");
+                window.location.assign("/codebot/dashboard");
                 return;
               }
             }
@@ -88,7 +88,7 @@ export default function LoginPage() {
 
       if (data?.access_token) {
         storeTokens(data.access_token, data.refresh_token);
-        window.location.assign("/codebot/");
+        window.location.assign("/codebot/dashboard");
       } else {
         throw new Error("No access token received");
       }
